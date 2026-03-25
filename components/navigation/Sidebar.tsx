@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import HomeSelector from '@/components/homes/HomeSelector';
 import { Separator } from '@/components/ui/separator';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 interface NavItem {
   id: string;
@@ -99,17 +100,25 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     >
       {/* Header */}
       <div className={collapsed ? 'p-3' : 'p-6'}>
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-          <div className="w-10 h-10 rounded-full bg-[#00B900] flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-bold text-white">A</span>
-          </div>
-          {!collapsed && (
-            <div>
-              <h1 className="text-lg font-bold text-white">Abduloei</h1>
-              <p className="text-xs text-gray-400">ผู้ช่วยอัจฉริยะ</p>
+        <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
+          <div className={`flex items-center ${collapsed ? '' : 'gap-3'}`}>
+            <div className="w-10 h-10 rounded-full bg-[#00B900] flex items-center justify-center flex-shrink-0">
+              <span className="text-lg font-bold text-white">A</span>
             </div>
-          )}
+            {!collapsed && (
+              <div>
+                <h1 className="text-lg font-bold text-white">Abduloei</h1>
+                <p className="text-xs text-gray-400">ผู้ช่วยอัจฉริยะ</p>
+              </div>
+            )}
+          </div>
+          {!collapsed && <NotificationBell />}
         </div>
+        {collapsed && (
+          <div className="flex justify-center mt-2">
+            <NotificationBell />
+          </div>
+        )}
       </div>
 
       {/* Home Selector */}

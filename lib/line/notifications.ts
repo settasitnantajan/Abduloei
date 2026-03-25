@@ -8,6 +8,29 @@ function truncateMessage(message: string): string {
   return message.substring(0, LINE_MESSAGE_MAX_LENGTH - 20) + '\n\n...ข้อความถูกตัด'
 }
 
+async function saveWebNotification(title: string, message: string, type: string, eventId?: string) {
+  try {
+    // ดึง user_id จาก events table (owner ของข้อมูล)
+    const { data: eventRow } = await adminClient
+      .from('events')
+      .select('user_id')
+      .limit(1)
+      .single()
+
+    if (!eventRow?.user_id) return
+
+    await adminClient.from('notifications').insert({
+      user_id: eventRow.user_id,
+      title,
+      message,
+      type,
+      event_id: eventId || null,
+    })
+  } catch (err) {
+    console.error('[Notifications] saveWebNotification error:', err)
+  }
+}
+
 export async function sendDailySummaryToLine(lineUserId: string) {
   const now = new Date()
   const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -84,6 +107,15 @@ export async function sendDailySummaryToLine(lineUserId: string) {
 
   message += '\nขอให้เป็นวันที่ดีนะคะ!'
 
+  // บันทึกแจ้งเตือนบนเว็บด้วย
+  const eventCount = events?.length ?? 0
+  const taskCount = tasks?.length ?? 0
+  await saveWebNotification(
+    `สรุปวันนี้ (${today})`,
+    `นัดหมาย ${eventCount} รายการ, งานค้าง ${taskCount} รายการ`,
+    'daily_summary'
+  )
+
   return sendTextMessage(lineUserId, truncateMessage(message))
 }
 
@@ -98,6 +130,19 @@ export async function sendEventReminderToLine(
   if (event.event_date) message += `วันที่: ${event.event_date}\n`
   if (event.event_time) message += `เวลา: ${event.event_time}\n`
   if (event.location) message += `สถานที่: ${event.location}\n`
+
+  // บันทึกแจ้งเตือนบนเว็บด้วย
+  const webMessage = [
+    event.event_date,
+    event.event_time,
+    event.location
+  ].filter(Boolean).join(' | ')
+  await saveWebNotification(
+    `${timeLabel} ${event.title}`,
+    webMessage,
+    'reminder',
+    event.id
+  )
 
   return sendTextMessage(lineUserId, message)
 }
