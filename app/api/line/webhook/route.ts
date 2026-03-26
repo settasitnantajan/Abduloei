@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { replyLineMessage } from '@/lib/line/client'
-import { verifyAndLinkCode, getLinkingStatus } from '@/lib/db/line-linking'
+import { verifyAndLinkCode } from '@/lib/db/line-linking'
 import { adminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     if (eventType === 'follow' && userId) {
       // เช็คว่า LINE ID นี้ผูกอยู่แล้วหรือยัง
       const { data: existing } = await adminClient
-        .from('user_profiles')
+        .from('user_line_accounts')
         .select('user_id')
         .eq('line_user_id', userId)
         .maybeSingle()

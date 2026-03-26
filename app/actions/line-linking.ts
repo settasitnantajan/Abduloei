@@ -14,15 +14,23 @@ export async function generateLinkingCode() {
 export async function getLinkingStatus() {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return { linked: false }
+  if (error || !user) return { linked: false, accounts: [] }
 
   return lineLinking.getLinkingStatus(user.id)
 }
 
-export async function unlinkLine() {
+export async function getLinkedCount() {
+  return lineLinking.getLinkedUsersCount()
+}
+
+export async function checkCodeUsed(code: string) {
+  return lineLinking.checkCodeUsed(code)
+}
+
+export async function unlinkLine(accountId: string) {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return { success: false, error: 'กรุณาเข้าสู่ระบบก่อน' }
 
-  return lineLinking.unlinkLine(user.id)
+  return lineLinking.unlinkLine(user.id, accountId)
 }

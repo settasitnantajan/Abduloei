@@ -59,17 +59,6 @@ export async function verifyAndLinkCode(
   code: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // เช็คว่า LINE ID นี้ผูกกับ user อื่นอยู่แล้วไหม
-    const { data: existingProfile } = await adminClient
-      .from('user_profiles')
-      .select('user_id')
-      .eq('line_user_id', lineUserId)
-      .maybeSingle()
-
-    if (existingProfile) {
-      return { success: false, error: 'LINE นี้เชื่อมกับบัญชีอื่นอยู่แล้ว' }
-    }
-
     // หา code ที่ยังไม่หมดอายุและยังไม่ใช้
     const { data: linkCode, error: codeError } = await adminClient
       .from('line_linking_codes')
@@ -83,19 +72,35 @@ export async function verifyAndLinkCode(
       return { success: false, error: 'รหัสไม่ถูกต้องหรือหมดอายุ' }
     }
 
-    // Upsert user_profiles ด้วย line_user_id
-    const { error: upsertError } = await adminClient
-      .from('user_profiles')
-      .upsert(
-        {
-          user_id: linkCode.user_id,
-          line_user_id: lineUserId,
-        },
-        { onConflict: 'user_id' }
-      )
+    // เช็คว่า LINE ID นี้ผูกอยู่แล้วหรือยัง
+    const { data: existingAccount } = await adminClient
+      .from('user_line_accounts')
+      .select('user_id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle()
 
-    if (upsertError) {
-      console.error('Error upserting user_profiles:', upsertError)
+    if (existingAccount) {
+      if (existingAccount.user_id === linkCode.user_id) {
+        // ผูกกับ user เดิมอยู่แล้ว — ถือว่าสำเร็จ
+        await adminClient
+          .from('line_linking_codes')
+          .update({ used_at: new Date().toISOString() })
+          .eq('id', linkCode.id)
+        return { success: true }
+      }
+      return { success: false, error: 'LINE นี้เชื่อมกับบัญชีอื่นอยู่แล้ว' }
+    }
+
+    // INSERT ลง user_line_accounts
+    const { error: insertError } = await adminClient
+      .from('user_line_accounts')
+      .insert({
+        user_id: linkCode.user_id,
+        line_user_id: lineUserId,
+      })
+
+    if (insertError) {
+      console.error('Error inserting user_line_accounts:', insertError)
       return { success: false, error: 'ไม่สามารถเชื่อมบัญชีได้' }
     }
 
@@ -113,28 +118,33 @@ export async function verifyAndLinkCode(
 }
 
 /**
- * เช็คสถานะการเชื่อม LINE ของ user
+ * เช็คสถานะการเชื่อม LINE ของ user — return array ของ accounts
  */
-export async function getLinkingStatus(userId: string): Promise<{ linked: boolean; lineUserId?: string }> {
+export async function getLinkingStatus(userId: string): Promise<{
+  linked: boolean
+  accounts: Array<{ id: string; lineUserId: string }>
+}> {
   const { data } = await adminClient
-    .from('user_profiles')
-    .select('line_user_id')
+    .from('user_line_accounts')
+    .select('id, line_user_id')
     .eq('user_id', userId)
-    .maybeSingle()
 
-  if (data?.line_user_id) {
-    return { linked: true, lineUserId: data.line_user_id }
-  }
-  return { linked: false }
+  const accounts = (data || []).map(row => ({
+    id: row.id,
+    lineUserId: row.line_user_id,
+  }))
+
+  return { linked: accounts.length > 0, accounts }
 }
 
 /**
- * ยกเลิกเชื่อม LINE
+ * ยกเลิกเชื่อม LINE account ตาม account id
  */
-export async function unlinkLine(userId: string): Promise<{ success: boolean; error?: string }> {
+export async function unlinkLine(userId: string, accountId: string): Promise<{ success: boolean; error?: string }> {
   const { error } = await adminClient
-    .from('user_profiles')
-    .update({ line_user_id: null })
+    .from('user_line_accounts')
+    .delete()
+    .eq('id', accountId)
     .eq('user_id', userId)
 
   if (error) {
@@ -144,13 +154,37 @@ export async function unlinkLine(userId: string): Promise<{ success: boolean; er
 }
 
 /**
- * ดึง user ทุกคนที่ผูก LINE (สำหรับ cron)
+ * เช็คว่า linking code ถูกใช้แล้วหรือยัง
+ */
+export async function checkCodeUsed(code: string): Promise<boolean> {
+  const { data } = await adminClient
+    .from('line_linking_codes')
+    .select('used_at')
+    .eq('code', code)
+    .maybeSingle()
+
+  return !!data?.used_at
+}
+
+/**
+ * นับจำนวน user ที่ผูก LINE แล้ว (distinct)
+ */
+export async function getLinkedUsersCount(): Promise<number> {
+  const { data } = await adminClient
+    .from('user_line_accounts')
+    .select('user_id')
+
+  const uniqueUsers = new Set((data || []).map(row => row.user_id))
+  return uniqueUsers.size
+}
+
+/**
+ * ดึง user ทุกคนที่ผูก LINE (สำหรับ cron — ส่งทุก LINE ID)
  */
 export async function getAllLinkedUsers(): Promise<Array<{ user_id: string; line_user_id: string }>> {
   const { data } = await adminClient
-    .from('user_profiles')
+    .from('user_line_accounts')
     .select('user_id, line_user_id')
-    .not('line_user_id', 'is', null)
 
-  return (data || []).filter(u => u.line_user_id) as Array<{ user_id: string; line_user_id: string }>
+  return (data || []) as Array<{ user_id: string; line_user_id: string }>
 }

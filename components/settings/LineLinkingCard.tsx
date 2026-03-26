@@ -1,47 +1,59 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { generateLinkingCode, getLinkingStatus, unlinkLine } from '@/app/actions/line-linking'
-import { CheckCircle2, LinkIcon, Unlink, Loader2, RefreshCw } from 'lucide-react'
+import { generateLinkingCode, getLinkingStatus, unlinkLine, getLinkedCount, checkCodeUsed } from '@/app/actions/line-linking'
+import { CheckCircle2, LinkIcon, Unlink, Loader2, RefreshCw, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 
+interface LineAccount {
+  id: string
+  lineUserId: string
+}
+
 export default function LineLinkingCard() {
-  const [status, setStatus] = useState<'loading' | 'unlinked' | 'linking' | 'linked'>('loading')
+  const [status, setStatus] = useState<'loading' | 'ready' | 'linking'>('loading')
+  const [accounts, setAccounts] = useState<LineAccount[]>([])
   const [code, setCode] = useState('')
   const [expiresIn, setExpiresIn] = useState(0)
   const [error, setError] = useState('')
+  const [linkedCount, setLinkedCount] = useState<number | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const checkStatus = useCallback(() => {
     startTransition(async () => {
       const result = await getLinkingStatus()
-      if (result.linked) {
-        setStatus('linked')
+      setAccounts(result.accounts)
+      if (status === 'linking' && result.accounts.length > accounts.length) {
+        // ผูกสำเร็จแล้ว หยุด linking mode
+        setStatus('ready')
         setCode('')
-      } else if (status !== 'linking') {
-        setStatus('unlinked')
+      } else if (status === 'loading') {
+        setStatus('ready')
       }
     })
-  }, [status])
+  }, [status, accounts.length])
 
   // เช็คสถานะตอนเปิดหน้า
   useEffect(() => {
     checkStatus()
+    getLinkedCount().then(setLinkedCount)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Polling ทุก 3 วินาทีตอนกำลัง link
+  // Polling ทุก 3 วินาทีตอนกำลัง link — เช็คว่า code ถูกใช้แล้วหรือยัง
   useEffect(() => {
-    if (status !== 'linking') return
+    if (status !== 'linking' || !code) return
     const interval = setInterval(async () => {
-      const result = await getLinkingStatus()
-      if (result.linked) {
-        setStatus('linked')
+      const used = await checkCodeUsed(code)
+      if (used) {
+        const result = await getLinkingStatus()
+        setAccounts(result.accounts)
+        setStatus('ready')
         setCode('')
       }
     }, 3000)
     return () => clearInterval(interval)
-  }, [status])
+  }, [status, code])
 
   // Countdown timer
   useEffect(() => {
@@ -49,7 +61,7 @@ export default function LineLinkingCard() {
     const timer = setInterval(() => {
       setExpiresIn(prev => {
         if (prev <= 1) {
-          setStatus('unlinked')
+          setStatus('ready')
           setCode('')
           return 0
         }
@@ -73,12 +85,12 @@ export default function LineLinkingCard() {
     })
   }
 
-  function handleUnlink() {
-    if (!confirm('ยกเลิกเชื่อม LINE? จะไม่ได้รับแจ้งเตือนทาง LINE อีก')) return
+  function handleUnlink(accountId: string) {
+    if (!confirm('ยกเลิกเชื่อม LINE นี้? จะไม่ได้รับแจ้งเตือนทาง LINE นี้อีก')) return
     startTransition(async () => {
-      const result = await unlinkLine()
+      const result = await unlinkLine(accountId)
       if (result.success) {
-        setStatus('unlinked')
+        setAccounts(prev => prev.filter(a => a.id !== accountId))
       } else {
         setError(result.error || 'ไม่สามารถยกเลิกได้')
       }
@@ -108,7 +120,10 @@ export default function LineLinkingCard() {
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">LINE Notification</h3>
-          <p className="text-xs text-gray-400">เชื่อม LINE เพื่อรับแจ้งเตือน</p>
+          <p className="text-xs text-gray-400">
+            เชื่อม LINE เพื่อรับแจ้งเตือน
+            {linkedCount !== null && <span className="ml-2 text-gray-500">({linkedCount} บัญชีเชื่อมแล้ว)</span>}
+          </p>
         </div>
       </div>
 
@@ -116,41 +131,57 @@ export default function LineLinkingCard() {
         <p className="text-red-400 text-sm bg-red-400/10 rounded-lg px-3 py-2 mb-4">{error}</p>
       )}
 
-      {/* สถานะ: เชื่อมแล้ว */}
-      {status === 'linked' && (
-        <div>
-          <div className="flex items-center gap-2 bg-[#00B900]/10 rounded-lg px-4 py-3 mb-4">
-            <CheckCircle2 className="w-5 h-5 text-[#00B900]" />
-            <span className="text-[#00B900] font-medium">เชื่อม LINE แล้ว</span>
-          </div>
-          <p className="text-sm text-gray-400 mb-4">
-            ระบบจะส่งแจ้งเตือนนัดหมาย กิจวัตร และสรุปประจำวันไปทาง LINE ของคุณ
-          </p>
-          <Button
-            onClick={handleUnlink}
-            disabled={isPending}
-            variant="outline"
-            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-          >
-            <Unlink className="w-4 h-4 mr-2" />
-            ยกเลิกเชื่อม
-          </Button>
+      {/* แสดง list LINE accounts ที่ผูกแล้ว */}
+      {accounts.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {accounts.map((account, index) => (
+            <div key={account.id} className="flex items-center justify-between bg-[#111111] border border-[#2A2A2A] rounded-lg px-4 py-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#00B900]" />
+                <span className="text-sm text-white">LINE #{index + 1}</span>
+                <span className="text-xs text-gray-500 font-mono">({account.lineUserId.slice(0, 8)}...)</span>
+              </div>
+              <Button
+                onClick={() => handleUnlink(account.id)}
+                disabled={isPending}
+                variant="ghost"
+                size="sm"
+                className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 px-2"
+              >
+                <Unlink className="w-3.5 h-3.5 mr-1" />
+                ยกเลิก
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* สถานะ: ยังไม่เชื่อม */}
-      {status === 'unlinked' && (
+      {/* ปุ่มเชื่อม LINE เพิ่ม (แสดงเสมอ) */}
+      {status === 'ready' && (
         <div>
-          <p className="text-sm text-gray-400 mb-4">
-            เชื่อม LINE เพื่อรับแจ้งเตือนนัดหมาย กิจวัตร และสรุปประจำวัน
-          </p>
+          {accounts.length > 0 && (
+            <p className="text-sm text-gray-400 mb-3">
+              ระบบจะส่งแจ้งเตือนไปทุก LINE ที่ผูกไว้
+            </p>
+          )}
+          {accounts.length === 0 && (
+            <p className="text-sm text-gray-400 mb-4">
+              เชื่อม LINE เพื่อรับแจ้งเตือนนัดหมาย กิจวัตร และสรุปประจำวัน
+            </p>
+          )}
           <Button
             onClick={handleGenerateCode}
             disabled={isPending}
             className="bg-[#00B900] hover:bg-[#00A000] text-white"
           >
-            {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LinkIcon className="w-4 h-4 mr-2" />}
-            เชื่อม LINE
+            {isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : accounts.length > 0 ? (
+              <Plus className="w-4 h-4 mr-2" />
+            ) : (
+              <LinkIcon className="w-4 h-4 mr-2" />
+            )}
+            {accounts.length > 0 ? 'เชื่อม LINE เพิ่ม' : 'เชื่อม LINE'}
           </Button>
         </div>
       )}

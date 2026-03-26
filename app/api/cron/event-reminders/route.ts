@@ -33,15 +33,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.message }, { status: auth.status })
   }
 
-  // ดึง users ที่ผูก LINE แล้ว + fallback env
-  let linkedUsers = await getAllLinkedUsers()
+  const linkedUsers = await getAllLinkedUsers()
 
   if (linkedUsers.length === 0) {
-    const fallbackLineUserId = process.env.LINE_USER_ID
-    if (!fallbackLineUserId) {
-      return NextResponse.json({ message: 'No linked users and LINE_USER_ID not set, skipped' })
-    }
-    linkedUsers = [{ user_id: '', line_user_id: fallbackLineUserId }]
+    return NextResponse.json({ message: 'No linked users, skipped' })
   }
 
   const now = new Date()
