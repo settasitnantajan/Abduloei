@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getUserTasks } from '@/app/actions/tasks';
-import { CheckSquare, Plus, Clock, Calendar, MessageCircle, CheckCircle2, Circle } from 'lucide-react';
+import { getUserTasks, deleteTask } from '@/app/actions/tasks';
+import { CheckSquare, Clock, Calendar, MessageCircle, CheckCircle2, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import DeleteButton from '@/components/shared/DeleteButton';
+import CreateTaskModal from '@/components/tasks/CreateTaskModal';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -35,12 +36,7 @@ export default async function TasksPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">งาน</h1>
             <p className="text-gray-400 text-sm">จัดการงานที่ต้องทำ</p>
           </div>
-          <Link href="/chat">
-            <Button className="bg-blue-600 hover:bg-blue-500 text-white">
-              <Plus className="w-5 h-5" />
-              สร้างงาน
-            </Button>
-          </Link>
+          <CreateTaskModal />
         </div>
 
         {tasksError || !tasks || tasks.length === 0 ? (
@@ -64,11 +60,7 @@ export default async function TasksPage() {
                 <span className="text-gray-300">พิมพ์: &quot;ต้องโทรหาช่างแอร์&quot;</span>
               </div>
             </div>
-            <Link href="/chat">
-              <Button className="bg-blue-600 hover:bg-blue-500 text-white">
-                ลองสร้างงานในแชท
-              </Button>
-            </Link>
+            <CreateTaskModal />
           </div>
         ) : (
           <div className="space-y-6">
@@ -94,6 +86,7 @@ export default async function TasksPage() {
                               <span className={`text-xs px-2 py-0.5 rounded-full ${priority.bg} ${priority.color} ${priority.border} border`}>
                                 {priority.label}
                               </span>
+                              <DeleteButton onDelete={deleteTask} itemId={task.id} itemName={task.title} />
                             </div>
                             {task.description && (
                               <p className="text-sm text-gray-400 mb-2">{task.description}</p>
@@ -144,7 +137,10 @@ export default async function TasksPage() {
                       <div className="flex items-start gap-3">
                         <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
                         <div className="flex-1">
-                          <h3 className="text-base font-medium text-gray-400 line-through">{task.title}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-medium text-gray-400 line-through">{task.title}</h3>
+                            <DeleteButton onDelete={deleteTask} itemId={task.id} itemName={task.title} />
+                          </div>
                         </div>
                       </div>
                     </div>

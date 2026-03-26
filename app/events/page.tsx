@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getUserEvents } from '@/app/actions/events';
-import { Calendar, Plus, Clock, MessageCircle, AlertTriangle, CheckCircle2, Circle, User } from 'lucide-react';
+import { getUserEvents, deleteEvent } from '@/app/actions/events';
+import { Calendar, Clock, MessageCircle, CheckCircle2, Circle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import DeleteButton from '@/components/shared/DeleteButton';
+import CreateEventModal from '@/components/events/CreateEventModal';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -47,12 +48,7 @@ export default async function EventsPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">นัดหมาย</h1>
             <p className="text-gray-400 text-sm">นัดหมายและกิจกรรมของคุณ</p>
           </div>
-          <Link href="/chat">
-            <Button className="bg-[#00B900] hover:bg-[#00A000] text-white">
-              <Plus className="w-5 h-5" />
-              สร้างนัดหมาย
-            </Button>
-          </Link>
+          <CreateEventModal />
         </div>
 
         {/* Events List or Empty State */}
@@ -77,11 +73,7 @@ export default async function EventsPage() {
                 <span className="text-gray-300">พิมพ์: &quot;วันเสาร์ 10 โมงมีประชุม ต้องเตรียมเอกสาร&quot;</span>
               </div>
             </div>
-            <Link href="/chat">
-              <Button className="bg-[#00B900] hover:bg-[#00A000] text-white">
-                ลองสร้างนัดหมายในแชท
-              </Button>
-            </Link>
+            <CreateEventModal />
           </div>
         ) : (
           <div className="space-y-4">
@@ -102,6 +94,7 @@ export default async function EventsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-lg font-semibold text-white">{event.title}</h3>
+                          <DeleteButton onDelete={deleteEvent} itemId={event.id} itemName={event.title} />
                           <span className={`text-xs px-2 py-0.5 rounded-full ${priority.bg} ${priority.color} ${priority.border} border`}>
                             {priority.label}
                           </span>

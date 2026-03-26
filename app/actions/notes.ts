@@ -1,7 +1,11 @@
 'use server'
 
 import * as notesDb from '@/lib/db/notes'
-import { UpdateNoteInput } from '@/lib/types/notes'
+import { CreateNoteInput, UpdateNoteInput } from '@/lib/types/notes'
+
+export async function createNote(data: CreateNoteInput) {
+  return notesDb.createNote(data)
+}
 
 export async function getUserNotes() {
   return notesDb.getUserNotes()

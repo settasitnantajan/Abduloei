@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendEventReminderToLine } from '@/lib/line/notifications'
+import { sendEventReminderToLine, sendRoutineReminderToLine } from '@/lib/line/notifications'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
   const cronSecret = process.env.CRON_SECRET
@@ -117,7 +117,51 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ message: 'Event reminders processed', sent })
+    // --- เตือนกิจวัตรประจำวัน (Routines) ก่อนเวลา X นาที ---
+    const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+    const todayDow = bangkokNow.getDay() // 0=อาทิตย์
+    const todayDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+
+    const { data: routines, error: errRoutines } = await adminClient
+      .from('routines')
+      .select('id, user_id, title, routine_time, days_of_week, remind_before_minutes, last_reminded_date')
+      .eq('is_active', true)
+
+    if (errRoutines) {
+      console.error('[CRON] Error querying routines:', errRoutines)
+    }
+
+    if (routines) {
+      for (const routine of routines) {
+        // เช็คว่าวันนี้ตรงกับ days_of_week ไหม
+        if (!routine.days_of_week.includes(todayDow)) continue
+
+        // เช็คว่าวันนี้เตือนไปแล้วหรือยัง
+        if (routine.last_reminded_date === todayDateStr) continue
+
+        // คำนวณเวลาที่ต้องเตือน = routine_time - remind_before_minutes
+        const routineDateTime = buildEventDate(todayDateStr, routine.routine_time)
+        if (!routineDateTime) continue
+
+        const remindAt = new Date(routineDateTime.getTime() - routine.remind_before_minutes * 60 * 1000)
+        const diffMs = remindAt.getTime() - nowMs
+        const diffMinutes = diffMs / (1000 * 60)
+
+        // เตือนถ้าอยู่ในช่วง -2 ถึง +13 นาที (รองรับ cron ทุก 15 นาที)
+        if (diffMinutes >= -2 && diffMinutes <= 13) {
+          const result = await sendRoutineReminderToLine(lineUserId, routine)
+          if (result.success) {
+            await adminClient
+              .from('routines')
+              .update({ last_reminded_date: todayDateStr })
+              .eq('id', routine.id)
+            sent.push(`routine: ${routine.title}`)
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ message: 'Event & routine reminders processed', sent })
   } catch (error) {
     console.error('[CRON] Event reminders error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/navigation/Sidebar';
 import BottomNav from '@/components/navigation/BottomNav';
+import MobileHeader from '@/components/navigation/MobileHeader';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 // Routes that should have navigation
-const navRoutes = ['/dashboard', '/events', '/tasks', '/notes', '/chat', '/settings', '/profile'];
+const navRoutes = ['/dashboard', '/events', '/tasks', '/notes', '/routines', '/chat', '/settings', '/profile'];
 
 // Routes that should NOT have navigation (auth pages, etc.)
 const noNavRoutes = ['/login', '/forgot-password', '/reset-password', '/'];
@@ -35,9 +36,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Desktop Sidebar */}
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
 
-      {/* Main Content - with padding for sidebar on desktop and bottom nav on mobile */}
+      {/* Mobile Header with NotificationBell */}
+      <MobileHeader />
+
+      {/* Main Content - with padding for sidebar on desktop, header+bottom nav on mobile */}
       <div
-        className={`pb-16 md:pb-0 transition-all duration-300 ${
+        className={`pt-12 pb-16 md:pt-0 md:pb-0 transition-all duration-300 ${
           sidebarCollapsed ? 'md:pl-[72px]' : 'md:pl-64'
         }`}
       >

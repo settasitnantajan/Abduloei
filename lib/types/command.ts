@@ -3,7 +3,7 @@
  * Thai Language Command Parsing System
  */
 
-export type CommandType = 'create_event' | 'create_task' | 'create_note' | 'delete_all' | 'edit_event'
+export type CommandType = 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'delete_all' | 'edit_event'
 
 export type Priority = 'low' | 'medium' | 'high'
 
@@ -20,9 +20,13 @@ export interface ParsedCommand {
   description?: string
   priority?: Priority
   checklist_items?: ChecklistItemParsed[] // สำหรับ events ที่มี checklist
+  // สำหรับ create_routine
+  routine_time?: string        // HH:mm
+  days_of_week?: number[]      // 0=อาทิตย์ ... 6=เสาร์
+  remind_before_minutes?: number
   deleteFilter?: {
     date?: string
-    type?: 'create_event' | 'create_task' | 'create_note'
+    type?: 'create_event' | 'create_task' | 'create_note' | 'create_routine'
     titleKeyword?: string
     all?: boolean
   }

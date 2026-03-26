@@ -11,7 +11,8 @@ import {
   Settings,
   User,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Repeat
 } from 'lucide-react';
 import HomeSelector from '@/components/homes/HomeSelector';
 import { Separator } from '@/components/ui/separator';
@@ -29,6 +30,7 @@ const mainNavItems: NavItem[] = [
   { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events' },
   { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks' },
   { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes' },
+  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines' },
   { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
 ];
 

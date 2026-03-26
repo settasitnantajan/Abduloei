@@ -119,6 +119,27 @@ export async function sendDailySummaryToLine(lineUserId: string) {
   return sendTextMessage(lineUserId, truncateMessage(message))
 }
 
+export async function sendRoutineReminderToLine(
+  lineUserId: string,
+  routine: { id: string; title: string; routine_time: string; remind_before_minutes: number }
+) {
+  const timeStr = routine.routine_time?.slice(0, 5) || ''
+  let message = `⏰ เตือนกิจวัตร\n`
+  message += '━━━━━━━━━━━━━━━\n'
+  message += `${routine.title}\n`
+  message += `เวลา: ${timeStr} น.\n`
+  message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
+
+  // บันทึกแจ้งเตือนบนเว็บด้วย
+  await saveWebNotification(
+    `⏰ ${routine.title}`,
+    `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น.`,
+    'routine_reminder'
+  )
+
+  return sendTextMessage(lineUserId, message)
+}
+
 export async function sendEventReminderToLine(
   lineUserId: string,
   event: { id: string; title: string; event_date: string; event_time: string | null; location: string | null },

@@ -81,10 +81,11 @@ function isNarration(text: string): boolean {
   if (/ไป.+มา(\s|$)/.test(text)) return true
 
   // Thai aspect markers (อดีต/สำเร็จ)
-  if (/.+แล้ว/.test(text)) return true
+  // "แล้ว" ที่อยู่ท้ายประโยค = เล่าเรื่อง แต่ "แล้วกัน/แล้วนะ" = คำสั่ง
+  if (/.+แล้ว\s*$/.test(text) && !/แล้วกัน|แล้วนะ|แล้วก็/.test(text) && !/หรือยัง/.test(text)) return true
   if (/เพิ่ง|พึ่ง/.test(text)) return true
   if (/เมื่อกี้|ตะกี้/.test(text)) return true
-  if (/เคย/.test(text)) return true
+  if (/เคย/.test(text) && !/เคยเป็น/.test(text)) return true
   // ได้ + V = achievement/past
   if (/ได้(เจอ|ไป|กิน|ทำ|ดู|เห็น)/.test(text)) return true
 
@@ -179,32 +180,67 @@ function detectCommandType(text: string): CommandType | null {
   }
 
   // === Priority 2: ไม่มีวันที่/เวลา → เช็ค Task keywords ===
-  const taskKeywords = [
-    'ต้อง', 'ซื้อ', 'จ่าย', 'ทำ', 'จัดการ', 'แก้ไข',
-    'ส่ง', 'โทร', 'อ่าน', 'เขียน', 'จด', 'เช็ค',
-    'ตรวจสอบ', 'เตรียม', 'จอง',
-    // เพิ่ม
-    'เพิ่มงาน', 'todo', 'to-do', 'สร้างงาน',
-    'ไปรับ', 'ไปส่ง', 'ต่อภาษี', 'ต่อทะเบียน',
-  ]
 
-  for (const keyword of taskKeywords) {
-    if (text.includes(keyword)) {
-      return 'create_task'
+  // ถ้าเป็นคำถาม → ไม่ใช่ task/note
+  const isQuestion = /(?:ไหม|มั้ย|มะ|ป่ะ|หรือเปล่า|หรือยัง|รึเปล่า|ดีมั้ย|ดีไหม|ยังไง|อะไร|ที่ไหน|เมื่อไร|ทำไม|ไรบ้าง)\s*[?？]?\s*$/.test(text)
+    || /^(ทำไม|ทำ(อะไร|ไม|ยังไง))/.test(text)
+    || /\?$/.test(text)
+
+  // ถ้าเป็นอดีต → ไม่ใช่ task/note
+  const isPast = /(?:ไปแล้ว|แล้ว$|เสร็จแล้ว|จ่ายแล้ว|ซื้อแล้ว|ทำแล้ว|ส่งแล้ว)/.test(text)
+
+  if (!isQuestion && !isPast) {
+    // Strong task keywords (ชัดเจนว่าเป็นคำสั่ง)
+    const strongTaskKeywords = [
+      'เพิ่มงาน', 'todo', 'to-do', 'สร้างงาน',
+      'ไปรับ', 'ไปส่ง', 'ต่อภาษี', 'ต่อทะเบียน',
+    ]
+
+    for (const keyword of strongTaskKeywords) {
+      if (text.includes(keyword)) {
+        return 'create_task'
+      }
+    }
+
+    // Weak task keywords — ต้องไม่ลงท้ายด้วย "ดี/ดีมั้ย/ได้ไหม" และไม่เป็นคำถาม
+    const weakTaskKeywords = [
+      'ต้อง', 'ซื้อ', 'จ่ายค่า', 'จัดการ',
+      'ส่ง', 'โทรหา', 'โทร', 'เช็ค', 'ตรวจสอบ', 'เตรียม', 'จอง',
+    ]
+
+    for (const keyword of weakTaskKeywords) {
+      if (text.includes(keyword)) {
+        return 'create_task'
+      }
     }
   }
 
   // === Priority 3: Note keywords ===
-  const noteKeywords = [
-    'จำ', 'บันทึก', 'จด', 'เก็บ', 'ข้อมูล',
-    'ไว้', 'เตือน', 'อย่าลืม',
-    // เพิ่ม
-    'โน้ต', 'note', 'เมโม', 'memo', 'save',
-    'จดไว้', 'จำด้วย', 'จดหน่อย',
-  ]
+  if (!isQuestion && !isPast) {
+    // Strong note keywords (ชัดเจน)
+    const strongNoteKeywords = [
+      'จดไว้', 'จำด้วย', 'จดหน่อย', 'จำไว้ว่า', 'จำไว้',
+      'บันทึกว่า', 'โน้ต', 'note', 'เมโม', 'memo', 'save ว่า',
+      'จดว่า', 'บันทึกไว้',
+    ]
 
-  for (const keyword of noteKeywords) {
-    if (text.includes(keyword)) {
+    for (const keyword of strongNoteKeywords) {
+      if (text.includes(keyword)) {
+        return 'create_note'
+      }
+    }
+
+    // Weak note keywords — ต้อง match pattern ชัดเจนกว่า
+    // "จำ" ต้องตามด้วย "ว่า/ไว้/ด้วย" ไม่ใช่ "จำไม่ได้", "จำได้ว่า"
+    if (/(?:^|\s)จำ(?:ว่า|ไว้|ด้วย)/.test(text) && !/จำไม่ได้|จำได้/.test(text)) {
+      return 'create_note'
+    }
+    // "บันทึก" — ไม่ใช่คำถาม
+    if (text.includes('บันทึก') && !/ดูบันทึก|เปิดบันทึก/.test(text)) {
+      return 'create_note'
+    }
+    // "อย่าลืม" + ไม่มี date → note
+    if (text.includes('อย่าลืม')) {
       return 'create_note'
     }
   }
@@ -357,6 +393,7 @@ export function formatCommandResponse(command: ParsedCommand): string {
     create_event: 'นัดหมาย',
     create_task: 'งาน',
     create_note: 'บันทึก',
+    create_routine: 'กิจวัตร',
     delete_all: 'ลบทั้งหมด',
     edit_event: 'แก้ไขนัดหมาย'
   }
@@ -587,13 +624,18 @@ export function isQueryCommand(text: string): boolean {
     'มีนัด', 'มีอะไร', 'นัดอะไรบ้าง', 'งานอะไรบ้าง',
     'ต้องทำอะไร', 'วันนี้มีอะไร', 'พรุ่งนี้มีอะไร',
     'แสดงรายการ', 'ดูรายการ', 'ดูนัด', 'ดูงาน',
-    'มีไหม', 'มีมั้ย', 'มีมะ', 'มีกี่รายการ', 'อะไรบ้าง',
-    // ภาษาพูด
-    'ว่างไหม', 'ว่างมั้ย', 'ว่างมะ', 'ว่างป่ะ',
+    'มีไหม', 'มีมั้ย', 'มีมะ', 'มีป่ะ', 'มีกี่รายการ', 'อะไรบ้าง',
+    // ภาษาพูด/แสลง
+    'ว่างไหม', 'ว่างมั้ย', 'ว่างมะ', 'ว่างป่ะ', 'ว่างเปล่า',
     'ตารางวัน', 'เช็คนัด', 'เช็กนัด', 'check นัด',
     'มีงานค้าง', 'งานค้าง', 'to-do', 'todo',
-    // ถามนัด
-    'นัดวันไหน', 'มีนัดมั้ย', 'มีนัดมะ',
+    // ถามนัด — ภาษาพูดสั้นๆ
+    'นัดวันไหน', 'มีนัดมั้ย', 'มีนัดมะ', 'มีนัดป่ะ',
+    'ไรบ้าง', 'ทำไรบ้าง', 'ทำอะไรบ้าง',
+    'มีงานมั้ย', 'มีงานมะ', 'มีงานไหม',
+    'มีอะไรมั้ย', 'มีอะไรมะ',
+    'ต้องทำไร', 'ต้องทำอะไร',
+    'มีนัดไหม', 'นัดมั้ย',
   ]
 
   for (const keyword of strongQueryKeywords) {
@@ -625,6 +667,16 @@ export function isQueryCommand(text: string): boolean {
 
   // "วันที่ X + ล่ะ/ละ" — เช่น "วันที่ 22 ล่ะ"
   if (/(?:วันที่|วัน\s*(?:จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์)).*(?:ล่ะ|ละ|ล้ะ|อ่ะ)\s*$/.test(normalized)) {
+    return true
+  }
+
+  // ภาษาพูดสั้น: "พรุ่งว่างมะ", "ศุกร์มีนัดมั้ย"
+  if (/(?:พรุ่ง|วันนี้|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์).*(?:มั้ย|มะ|ป่ะ|ไหม|ว่าง)/.test(normalized)) {
+    return true
+  }
+
+  // "...อะ" / "...อ่ะ" ลงท้ายคำถาม + มีวัน/เวลา
+  if (/(?:อะ|อ่ะ|วะ|หรอ)\s*$/.test(normalized) && /(?:นัด|งาน|ทำ|มี)/.test(normalized)) {
     return true
   }
 

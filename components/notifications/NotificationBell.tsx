@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bell, Check, CheckCheck } from 'lucide-react'
+import { Bell, Check, CheckCheck, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { getUnreadCount, getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications'
 
 interface Notification {
@@ -85,81 +86,173 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 md:left-full md:right-auto md:ml-2 top-0 z-50 w-80 max-h-96 bg-[#1A1A1A] border border-[#333333] rounded-lg shadow-xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#333333]">
-              <h3 className="text-sm font-semibold text-white">แจ้งเตือน</h3>
-              {unreadCount > 0 && (
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/40 md:bg-transparent"
+              onClick={() => setIsOpen(false)}
+            />
+
+            {/* Desktop: dropdown | Mobile: bottom sheet */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="hidden md:block absolute right-0 md:left-full md:right-auto md:ml-2 top-0 z-50 w-80 max-h-96 bg-[#1A1A1A] border border-[#333333] rounded-lg shadow-xl overflow-hidden"
+            >
+              <NotificationContent
+                notifications={notifications}
+                loading={loading}
+                unreadCount={unreadCount}
+                onMarkAsRead={handleMarkAsRead}
+                onMarkAllAsRead={handleMarkAllAsRead}
+              />
+            </motion.div>
+
+            {/* Mobile bottom sheet */}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-[#1A1A1A] border-t border-[#333333] rounded-t-2xl max-h-[80vh] overflow-hidden pb-safe"
+            >
+              {/* Drag handle */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-[#444444]" />
+              </div>
+              {/* Close button */}
+              <div className="flex items-center justify-between px-4 pb-2">
+                <h3 className="text-base font-semibold text-white">แจ้งเตือน</h3>
                 <button
-                  onClick={handleMarkAllAsRead}
-                  className="flex items-center gap-1 text-xs text-[#00B900] hover:text-[#00D900] transition-colors"
+                  onClick={() => setIsOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-[#2A2A2A] text-gray-500"
                 >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  อ่านทั้งหมด
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <NotificationContent
+                notifications={notifications}
+                loading={loading}
+                unreadCount={unreadCount}
+                onMarkAsRead={handleMarkAsRead}
+                onMarkAllAsRead={handleMarkAllAsRead}
+                hideHeader
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function NotificationContent({
+  notifications,
+  loading,
+  unreadCount,
+  onMarkAsRead,
+  onMarkAllAsRead,
+  hideHeader = false,
+}: {
+  notifications: Notification[]
+  loading: boolean
+  unreadCount: number
+  onMarkAsRead: (id: string) => void
+  onMarkAllAsRead: () => void
+  hideHeader?: boolean
+}) {
+  return (
+    <>
+      {/* Header (desktop only) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#333333]">
+          <h3 className="text-sm font-semibold text-white">แจ้งเตือน</h3>
+          {unreadCount > 0 && (
+            <button
+              onClick={onMarkAllAsRead}
+              className="flex items-center gap-1 text-xs text-[#00B900] hover:text-[#00D900] transition-colors"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              อ่านทั้งหมด
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Mark all as read (mobile, inside sheet) */}
+      {hideHeader && unreadCount > 0 && (
+        <div className="flex justify-end px-4 pb-2">
+          <button
+            onClick={onMarkAllAsRead}
+            className="flex items-center gap-1 text-xs text-[#00B900] hover:text-[#00D900] transition-colors"
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            อ่านทั้งหมด
+          </button>
+        </div>
+      )}
+
+      {/* List */}
+      <div className="overflow-y-auto max-h-80 md:max-h-80">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-5 h-5 border-2 border-[#00B900] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+            <Bell className="w-8 h-8 mb-2 opacity-50" />
+            <p className="text-sm">ไม่มีแจ้งเตือน</p>
+          </div>
+        ) : (
+          notifications.map(notification => (
+            <div
+              key={notification.id}
+              className={`flex items-start gap-3 px-4 py-3 border-b border-[#222] hover:bg-[#222] transition-colors cursor-pointer ${
+                !notification.is_read ? 'bg-[#00B900]/5' : ''
+              }`}
+              onClick={() => !notification.is_read && onMarkAsRead(notification.id)}
+            >
+              <div className="flex-shrink-0 mt-1">
+                {!notification.is_read ? (
+                  <div className="w-2 h-2 rounded-full bg-[#00B900]" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-transparent" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm ${!notification.is_read ? 'text-white font-medium' : 'text-gray-400'}`}>
+                  {notification.title}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                  {notification.message}
+                </p>
+                <p className="text-[10px] text-gray-600 mt-1">
+                  {timeAgo(notification.created_at)}
+                </p>
+              </div>
+              {!notification.is_read && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onMarkAsRead(notification.id)
+                  }}
+                  className="flex-shrink-0 p-1 text-gray-500 hover:text-[#00B900] transition-colors"
+                  title="อ่านแล้ว"
+                >
+                  <Check className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-
-            {/* List */}
-            <div className="overflow-y-auto max-h-80">
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="w-5 h-5 border-2 border-[#00B900] border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                  <Bell className="w-8 h-8 mb-2 opacity-50" />
-                  <p className="text-sm">ไม่มีแจ้งเตือน</p>
-                </div>
-              ) : (
-                notifications.map(notification => (
-                  <div
-                    key={notification.id}
-                    className={`flex items-start gap-3 px-4 py-3 border-b border-[#222] hover:bg-[#222] transition-colors cursor-pointer ${
-                      !notification.is_read ? 'bg-[#00B900]/5' : ''
-                    }`}
-                    onClick={() => !notification.is_read && handleMarkAsRead(notification.id)}
-                  >
-                    <div className="flex-shrink-0 mt-1">
-                      {!notification.is_read ? (
-                        <div className="w-2 h-2 rounded-full bg-[#00B900]" />
-                      ) : (
-                        <div className="w-2 h-2 rounded-full bg-transparent" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${!notification.is_read ? 'text-white font-medium' : 'text-gray-400'}`}>
-                        {notification.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                        {notification.message}
-                      </p>
-                      <p className="text-[10px] text-gray-600 mt-1">
-                        {timeAgo(notification.created_at)}
-                      </p>
-                    </div>
-                    {!notification.is_read && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleMarkAsRead(notification.id)
-                        }}
-                        className="flex-shrink-0 p-1 text-gray-500 hover:text-[#00B900] transition-colors"
-                        title="อ่านแล้ว"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+          ))
+        )}
+      </div>
+    </>
   )
 }

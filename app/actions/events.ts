@@ -18,6 +18,10 @@ export async function getUserEvents() {
   return eventsDb.getUserEvents()
 }
 
+export async function deleteEvent(eventId: string) {
+  return eventsDb.deleteEvent(eventId)
+}
+
 /**
  * อัพเดท Checklist Item (toggle completed, แก้ title, หรือ assignee)
  */

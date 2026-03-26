@@ -84,6 +84,13 @@ export default function CommandCard({
       bgColor: 'bg-orange-500/10',
       borderColor: 'border-orange-500/30',
       iconColor: 'text-orange-500'
+    },
+    create_routine: {
+      icon: CalendarIcon,
+      label: 'กิจวัตรประจำวัน',
+      bgColor: 'bg-purple-500/10',
+      borderColor: 'border-purple-500/30',
+      iconColor: 'text-purple-500'
     }
   }
 

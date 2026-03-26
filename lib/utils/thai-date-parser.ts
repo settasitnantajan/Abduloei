@@ -345,7 +345,8 @@ function parseTime(text: string): string | undefined {
   if (/เที่ยง(?:วัน)?/.test(text) && !text.includes('เที่ยงคืน')) return '12:00'
 
   // รูปแบบ HH:mm หรือ HH.mm (เช่น 14:00, 14.30)
-  const timeMatch = text.match(/(\d{1,2})[:.](\d{2})/)
+  // ต้องไม่ match วันที่ เช่น 27/3 (ใช้ : หรือ . ที่ไม่ตามด้วย / ข้างหน้า)
+  const timeMatch = text.match(/(?<!\d[/\-])(\d{1,2})[:.](\d{2})(?![/\-]\d)/)
   if (timeMatch) {
     const hour = parseInt(timeMatch[1])
     const minute = parseInt(timeMatch[2])
@@ -396,7 +397,7 @@ function parseTime(text: string): string | undefined {
     }
   }
 
-  // "X โมง (ครึ่ง / Y นาที)" + บ่าย/เย็น/เช้า
+  // "X โมง (ครึ่ง / Y นาที)" + บ่าย/เย็น/เช้า (รองรับ "5โมง" ไม่มี space)
   const hourMatch = text.match(/(\d{1,2})\s*โมง\s*(ครึ่ง)?(?:\s*(\d{1,2})\s*นาที)?/)
   if (hourMatch) {
     let hour = parseInt(hourMatch[1])

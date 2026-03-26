@@ -46,7 +46,7 @@ export default function LoginPage() {
 
       if (result.success) {
         toast.success("เข้าสู่ระบบสำเร็จ");
-        router.push("/dashboard");
+        router.push("/chat");
         router.refresh();
       } else {
         toast.error(result.error || "เกิดข้อผิดพลาด");

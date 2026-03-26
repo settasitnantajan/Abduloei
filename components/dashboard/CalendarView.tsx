@@ -173,7 +173,7 @@ export default function CalendarView({ events }: CalendarViewProps) {
                 }`}
               >
                 <span
-                  className={`inline-flex items-center justify-center w-7 h-7 text-sm rounded-full ${
+                  className={`inline-flex items-center justify-center w-7 h-7 text-xs sm:text-sm rounded-full ${
                     isToday
                       ? 'bg-[#00B900] text-white font-bold'
                       : dayOfWeek === 0
@@ -186,34 +186,49 @@ export default function CalendarView({ events }: CalendarViewProps) {
                   {day}
                 </span>
 
-                {/* Event items - กดแต่ละอันเปิดรายละเอียดได้ */}
+                {/* Event items - desktop: text, mobile: dots only */}
                 {dayEvents.length > 0 && (
-                  <div className="mt-1 space-y-0.5">
-                    {dayEvents.slice(0, 3).map(ev => {
-                      const config = getTypeConfig(ev.type);
-                      return (
-                        <div
-                          key={ev.id}
-                          role="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedItem(ev);
-                          }}
-                          className="flex items-center gap-1 px-1 rounded hover:bg-white/10 cursor-pointer transition-colors"
-                        >
-                          <div className={`w-1.5 h-1.5 rounded-full ${config.color} shrink-0`} />
-                          <span className="text-[10px] text-gray-400 truncate leading-tight hover:text-white transition-colors">
-                            {ev.title}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {dayEvents.length > 3 && (
-                      <span className="text-[10px] text-gray-500 px-1">
-                        +{dayEvents.length - 3}
-                      </span>
-                    )}
-                  </div>
+                  <>
+                    {/* Mobile: dot indicators */}
+                    <div className="mt-1 flex items-center gap-0.5 sm:hidden justify-center">
+                      {dayEvents.slice(0, 4).map(ev => {
+                        const config = getTypeConfig(ev.type);
+                        return (
+                          <div key={ev.id} className={`w-1.5 h-1.5 rounded-full ${config.color}`} />
+                        );
+                      })}
+                      {dayEvents.length > 4 && (
+                        <span className="text-[10px] text-gray-500">+</span>
+                      )}
+                    </div>
+                    {/* Desktop: text labels */}
+                    <div className="mt-1 space-y-0.5 hidden sm:block">
+                      {dayEvents.slice(0, 3).map(ev => {
+                        const config = getTypeConfig(ev.type);
+                        return (
+                          <div
+                            key={ev.id}
+                            role="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedItem(ev);
+                            }}
+                            className="flex items-center gap-1 px-1 rounded hover:bg-white/10 cursor-pointer transition-colors"
+                          >
+                            <div className={`w-1.5 h-1.5 rounded-full ${config.color} shrink-0`} />
+                            <span className="text-[11px] text-gray-400 truncate leading-tight hover:text-white transition-colors">
+                              {ev.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > 3 && (
+                        <span className="text-[11px] text-gray-500 px-1">
+                          +{dayEvents.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </>
                 )}
               </button>
             );

@@ -1,7 +1,11 @@
 'use server'
 
 import * as tasksDb from '@/lib/db/tasks'
-import { UpdateTaskInput } from '@/lib/types/tasks'
+import { CreateTaskInput, UpdateTaskInput } from '@/lib/types/tasks'
+
+export async function createTask(data: CreateTaskInput) {
+  return tasksDb.createTask(data)
+}
 
 export async function getUserTasks() {
   return tasksDb.getUserTasks()

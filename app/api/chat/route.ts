@@ -7,6 +7,7 @@ import { CommandMetadata } from '@/lib/types/command';
 import { createEventWithChecklist, deleteAllEvents, deleteEventsByFilter, getUserEvents, updateEvent } from '@/lib/db/events';
 import { createTask, deleteAllTasks, getUserTasks } from '@/lib/db/tasks';
 import { createNote, deleteAllNotes, getUserNotes } from '@/lib/db/notes';
+import { createRoutine, getUserRoutines } from '@/lib/db/routines';
 import { buildAIContext, contextToPrompt, detectUserEmotion, getEmpatheticPrefix } from '@/lib/ai/context-builder';
 import { processMessageForMemories } from '@/lib/db/memories';
 import { searchWeb, formatSearchResults } from '@/lib/ai/web-searcher';
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
           create_event: 'นัดหมาย',
           create_task: 'งาน',
           create_note: 'บันทึก',
+          create_routine: 'กิจวัตร',
           edit_event: 'แก้ไขนัดหมาย'
         };
 
@@ -123,6 +125,28 @@ export async function POST(request: NextRequest) {
             aiResponse = `สร้าง${typeName} "${pendingCommand.title}" เรียบร้อยแล้วค่ะ ✅`;
           } else {
             aiResponse = `ขอโทษค่ะ ไม่สามารถสร้าง${typeName}ได้: ${error}`;
+          }
+        } else if (pendingCommand?.type === 'create_routine') {
+          const DAYS_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+          const { success, error } = await createRoutine({
+            title: pendingCommand.title,
+            description: pendingCommand.description,
+            routine_time: pendingCommand.routine_time || '09:00',
+            days_of_week: pendingCommand.days_of_week || [0, 1, 2, 3, 4, 5, 6],
+            remind_before_minutes: pendingCommand.remind_before_minutes ?? 10,
+            source_message: pendingMetadata.command?.raw || message,
+          });
+
+          if (success) {
+            await markCommandExecuted(pendingMsg.id);
+            const daysLabel = (pendingCommand.days_of_week || [0, 1, 2, 3, 4, 5, 6]).length === 7
+              ? 'ทุกวัน'
+              : (pendingCommand.days_of_week || []).map((d: number) => DAYS_TH[d]).join(' ');
+            const timeStr = pendingCommand.routine_time || '09:00';
+            const remindMin = pendingCommand.remind_before_minutes ?? 10;
+            aiResponse = `สร้างกิจวัตร "${pendingCommand.title}" ${daysLabel} เวลา ${timeStr} น. (เตือนก่อน ${remindMin} นาที) เรียบร้อยแล้ว ✅`;
+          } else {
+            aiResponse = `ขอโทษค่ะ ไม่สามารถสร้างกิจวัตรได้: ${error}`;
           }
         } else if (pendingCommand?.type === 'create_note') {
           const { success, error } = await createNote({
@@ -290,12 +314,12 @@ export async function POST(request: NextRequest) {
       executed: false,
     };
 
-    const isCommand = intent.intent === 'create_event' || intent.intent === 'create_task' || intent.intent === 'create_note' || intent.intent === 'delete_all' || intent.intent === 'edit_event';
+    const isCommand = intent.intent === 'create_event' || intent.intent === 'create_task' || intent.intent === 'create_note' || intent.intent === 'create_routine' || intent.intent === 'delete_all' || intent.intent === 'edit_event';
 
     if (isCommand) {
       userMetadata = {
         command: {
-          type: intent.intent as 'create_event' | 'create_task' | 'create_note' | 'delete_all' | 'edit_event',
+          type: intent.intent as 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'delete_all' | 'edit_event',
           title: intent.title || message.slice(0, 50),
           date: intent.date,
           time: intent.time,
@@ -304,6 +328,9 @@ export async function POST(request: NextRequest) {
           checklist_items: intent.checklist_items,
           deleteFilter: intent.deleteFilter,
           editTarget: intent.editTarget,
+          routine_time: intent.routine_time,
+          days_of_week: intent.days_of_week,
+          remind_before_minutes: intent.remind_before_minutes,
           raw: message,
         },
         parsed: true,
@@ -350,11 +377,12 @@ export async function POST(request: NextRequest) {
 
     if (intent.intent === 'query') {
       console.log('[CHAT DEBUG] Entering query block');
-      // ดึงข้อมูลจาก events/tasks/notes table โดยตรง (ไม่พึ่ง chat metadata)
-      const [eventsResult, tasksResult, notesResult] = await Promise.all([
+      // ดึงข้อมูลจาก events/tasks/notes/routines table โดยตรง
+      const [eventsResult, tasksResult, notesResult, routinesResult] = await Promise.all([
         getUserEvents(),
         getUserTasks(),
         getUserNotes(),
+        getUserRoutines(),
       ]);
 
       // ตรวจว่าถามเฉพาะประเภทไหน
@@ -362,7 +390,8 @@ export async function POST(request: NextRequest) {
       const askEvent = /นัด|หมาย|event|กิจกรรม|ประชุม/.test(msgLower);
       const askTask = /งาน|task|todo|ต้องทำ/.test(msgLower);
       const askNote = /บันทึก|โน้ต|note|เมโม|จด/.test(msgLower);
-      const askAll = (!askEvent && !askTask && !askNote) || /ทั้งหมด|ทุกอย่าง/.test(msgLower);
+      const askRoutine = /กิจวัตร|routine|ประจำ|ทุกวัน/.test(msgLower);
+      const askAll = (!askEvent && !askTask && !askNote && !askRoutine) || /ทั้งหมด|ทุกอย่าง/.test(msgLower);
 
       // รวมรายการตามที่ถาม
       type QueryItem = { type: string; title: string; date?: string; time?: string };
@@ -386,6 +415,21 @@ export async function POST(request: NextRequest) {
         if (notesResult.notes) {
           for (const n of notesResult.notes) {
             allItems.push({ type: 'บันทึก', title: n.title });
+          }
+        }
+      }
+      if (askAll || askRoutine) {
+        const DAYS_TH_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+        if (routinesResult.routines) {
+          for (const r of routinesResult.routines) {
+            const daysLabel = r.days_of_week.length === 7
+              ? 'ทุกวัน'
+              : r.days_of_week.map(d => DAYS_TH_SHORT[d]).join(',');
+            allItems.push({
+              type: 'กิจวัตร',
+              title: `${r.title} (${daysLabel})`,
+              time: r.routine_time?.slice(0, 5),
+            });
           }
         }
       }
@@ -569,6 +613,21 @@ export async function POST(request: NextRequest) {
         } else {
           aiResponse = 'ไม่พบรายการที่ตรงกับเงื่อนไขค่ะ 😊';
         }
+      } else if (isCommand && intent.intent === 'create_routine') {
+        // Routine → show details before confirming
+        const DAYS_TH_FULL = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์'];
+        const days = intent.days_of_week || [0, 1, 2, 3, 4, 5, 6];
+        const daysLabel = days.length === 7
+          ? 'ทุกวัน'
+          : days.map(d => DAYS_TH_FULL[d]).join(', ');
+        const timeStr = intent.routine_time || intent.time || '09:00';
+        const remindMin = intent.remind_before_minutes ?? 10;
+
+        aiResponse = `ยืนยันสร้างกิจวัตร "${intent.title}" ไหมคะ?\n\n` +
+          `⏰ เวลา: ${timeStr} น.\n` +
+          `📅 วัน: ${daysLabel}\n` +
+          `🔔 เตือนก่อน: ${remindMin} นาที\n\n` +
+          `💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
       } else if (isCommand) {
         // Create command → ask for confirmation
         aiResponse = generateConfirmationPrompt(intent.intent, intent.title || message.slice(0, 50));

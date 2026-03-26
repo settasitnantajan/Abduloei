@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getUserNotes } from '@/app/actions/notes';
-import { StickyNote, Plus, MessageCircle, Tag } from 'lucide-react';
+import { getUserNotes, deleteNote } from '@/app/actions/notes';
+import { StickyNote, MessageCircle, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import DeleteButton from '@/components/shared/DeleteButton';
+import CreateNoteModal from '@/components/notes/CreateNoteModal';
 
 export default async function NotesPage() {
   const supabase = await createClient();
@@ -24,12 +25,7 @@ export default async function NotesPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">บันทึก</h1>
             <p className="text-gray-400 text-sm">บันทึกข้อมูลสำคัญ</p>
           </div>
-          <Link href="/chat">
-            <Button className="bg-amber-600 hover:bg-amber-500 text-white">
-              <Plus className="w-5 h-5" />
-              สร้างบันทึก
-            </Button>
-          </Link>
+          <CreateNoteModal />
         </div>
 
         {notesError || !notes || notes.length === 0 ? (
@@ -53,11 +49,7 @@ export default async function NotesPage() {
                 <span className="text-gray-300">พิมพ์: &quot;บันทึกไว้ว่าค่าไฟเดือนนี้ 2,500 บาท&quot;</span>
               </div>
             </div>
-            <Link href="/chat">
-              <Button className="bg-amber-600 hover:bg-amber-500 text-white">
-                ลองสร้างบันทึกในแชท
-              </Button>
-            </Link>
+            <CreateNoteModal />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -68,12 +60,15 @@ export default async function NotesPage() {
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="text-base font-medium text-white">{note.title}</h3>
-                  {note.category && (
-                    <span className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-400/30">
-                      <Tag className="w-3 h-3" />
-                      {note.category}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {note.category && (
+                      <span className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-400/30">
+                        <Tag className="w-3 h-3" />
+                        {note.category}
+                      </span>
+                    )}
+                    <DeleteButton onDelete={deleteNote} itemId={note.id} itemName={note.title} />
+                  </div>
                 </div>
 
                 {note.content && (

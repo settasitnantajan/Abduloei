@@ -162,6 +162,24 @@ export async function updateEvent(
 }
 
 /**
+ * ลบ Event เดี่ยวตาม ID
+ */
+export async function deleteEvent(eventId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch {
+    return { success: false, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/**
  * ลบ Events ตาม filter (วันที่ และ/หรือ ชื่อ)
  */
 export async function deleteEventsByFilter(filterDate?: string, titleKeyword?: string): Promise<{ success: boolean; count: number; error?: string }> {

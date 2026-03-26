@@ -79,7 +79,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Stats — กดไปหน้าแต่ละโหมด */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <Link href="/events" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-[#00B900]/50 transition-colors">
             <div className="w-10 h-10 rounded-lg bg-[#00B900]/20 flex items-center justify-center shrink-0">
               <Calendar className="w-5 h-5 text-[#00B900]" />
