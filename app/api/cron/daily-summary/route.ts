@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { sendDailySummaryToLine } from '@/lib/line/notifications'
+import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
   const cronSecret = process.env.CRON_SECRET
@@ -31,20 +32,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.message }, { status: auth.status })
   }
 
-  const lineUserId = process.env.LINE_USER_ID
-  if (!lineUserId) {
-    console.warn('[CRON] LINE_USER_ID not set, skipping daily summary')
-    return NextResponse.json({ message: 'LINE_USER_ID not set, skipped' })
+  // ดึง users ที่ผูก LINE แล้ว + fallback env
+  let linkedUsers = await getAllLinkedUsers()
+
+  if (linkedUsers.length === 0) {
+    const fallbackLineUserId = process.env.LINE_USER_ID
+    if (!fallbackLineUserId) {
+      return NextResponse.json({ message: 'No linked users and LINE_USER_ID not set, skipped' })
+    }
+    linkedUsers = [{ user_id: '', line_user_id: fallbackLineUserId }]
   }
 
-  try {
-    const result = await sendDailySummaryToLine(lineUserId)
+  const sent: string[] = []
 
-    if (result.success) {
-      return NextResponse.json({ message: 'Daily summary sent' })
-    } else {
-      return NextResponse.json({ error: result.error }, { status: 500 })
+  try {
+    for (const { user_id: userId, line_user_id: lineUserId } of linkedUsers) {
+      const result = await sendDailySummaryToLine(lineUserId, userId || undefined)
+      if (result.success) {
+        sent.push(userId ? userId.slice(0, 8) : 'env')
+      }
     }
+
+    return NextResponse.json({ message: 'Daily summary sent', sent, usersCount: linkedUsers.length })
   } catch (error) {
     console.error('[CRON] Daily summary error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

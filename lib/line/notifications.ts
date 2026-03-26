@@ -8,19 +8,10 @@ function truncateMessage(message: string): string {
   return message.substring(0, LINE_MESSAGE_MAX_LENGTH - 20) + '\n\n...ข้อความถูกตัด'
 }
 
-async function saveWebNotification(title: string, message: string, type: string, eventId?: string) {
+async function saveWebNotification(userId: string, title: string, message: string, type: string, eventId?: string) {
   try {
-    // ดึง user_id จาก events table (owner ของข้อมูล)
-    const { data: eventRow } = await adminClient
-      .from('events')
-      .select('user_id')
-      .limit(1)
-      .single()
-
-    if (!eventRow?.user_id) return
-
     await adminClient.from('notifications').insert({
-      user_id: eventRow.user_id,
+      user_id: userId,
       title,
       message,
       type,
@@ -31,51 +22,53 @@ async function saveWebNotification(title: string, message: string, type: string,
   }
 }
 
-export async function sendDailySummaryToLine(lineUserId: string) {
+export async function sendDailySummaryToLine(lineUserId: string, userId?: string) {
   const now = new Date()
   const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 
-  // Query events วันนี้
-  const { data: events, error: eventsError } = await adminClient
+  // Base queries
+  let eventsQuery = adminClient
     .from('events')
     .select('title, event_time, location, priority')
     .eq('event_date', today)
     .order('event_time', { ascending: true })
 
-  if (eventsError) {
-    console.error('[Notifications] Events query failed:', eventsError)
-  }
-
-  // Query tasks ที่ยัง pending
-  const { data: tasks, error: tasksError } = await adminClient
+  let tasksQuery = adminClient
     .from('tasks')
     .select('title, due_date, priority')
     .eq('status', 'pending')
     .order('due_date', { ascending: true })
     .limit(10)
 
-  if (tasksError) {
-    console.error('[Notifications] Tasks query failed:', tasksError)
-  }
-
-  // Query notes ล่าสุด (24 ชม.)
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
-  const { data: notes, error: notesError } = await adminClient
+  let notesQuery = adminClient
     .from('notes')
     .select('title, category')
     .gte('created_at', yesterday)
     .order('created_at', { ascending: false })
     .limit(5)
 
-  if (notesError) {
-    console.error('[Notifications] Notes query failed:', notesError)
+  // Filter ตาม user ถ้ามี
+  if (userId) {
+    eventsQuery = eventsQuery.eq('user_id', userId)
+    tasksQuery = tasksQuery.eq('user_id', userId)
+    notesQuery = notesQuery.eq('user_id', userId)
   }
+
+  const [
+    { data: events, error: eventsError },
+    { data: tasks, error: tasksError },
+    { data: notes, error: notesError },
+  ] = await Promise.all([eventsQuery, tasksQuery, notesQuery])
+
+  if (eventsError) console.error('[Notifications] Events query failed:', eventsError)
+  if (tasksError) console.error('[Notifications] Tasks query failed:', tasksError)
+  if (notesError) console.error('[Notifications] Notes query failed:', notesError)
 
   // สร้างข้อความ
   let message = `สรุปวันนี้ (${today})\n`
   message += '━━━━━━━━━━━━━━━\n'
 
-  // นัดหมาย
   if (events && events.length > 0) {
     message += `\nนัดหมายวันนี้ (${events.length} รายการ):\n`
     for (const e of events) {
@@ -87,7 +80,6 @@ export async function sendDailySummaryToLine(lineUserId: string) {
     message += '\nวันนี้ไม่มีนัดหมาย\n'
   }
 
-  // งาน
   if (tasks && tasks.length > 0) {
     message += `\nงานค้าง (${tasks.length} รายการ):\n`
     for (const t of tasks) {
@@ -96,7 +88,6 @@ export async function sendDailySummaryToLine(lineUserId: string) {
     }
   }
 
-  // บันทึกล่าสุด
   if (notes && notes.length > 0) {
     message += `\nบันทึกล่าสุด (${notes.length}):\n`
     for (const n of notes) {
@@ -108,20 +99,23 @@ export async function sendDailySummaryToLine(lineUserId: string) {
   message += '\nขอให้เป็นวันที่ดีนะคะ!'
 
   // บันทึกแจ้งเตือนบนเว็บด้วย
-  const eventCount = events?.length ?? 0
-  const taskCount = tasks?.length ?? 0
-  await saveWebNotification(
-    `สรุปวันนี้ (${today})`,
-    `นัดหมาย ${eventCount} รายการ, งานค้าง ${taskCount} รายการ`,
-    'daily_summary'
-  )
+  if (userId) {
+    const eventCount = events?.length ?? 0
+    const taskCount = tasks?.length ?? 0
+    await saveWebNotification(
+      userId,
+      `สรุปวันนี้ (${today})`,
+      `นัดหมาย ${eventCount} รายการ, งานค้าง ${taskCount} รายการ`,
+      'daily_summary'
+    )
+  }
 
   return sendTextMessage(lineUserId, truncateMessage(message))
 }
 
 export async function sendRoutineReminderToLine(
   lineUserId: string,
-  routine: { id: string; title: string; routine_time: string; remind_before_minutes: number }
+  routine: { id: string; user_id?: string; title: string; routine_time: string; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
   let message = `⏰ เตือนกิจวัตร\n`
@@ -130,19 +124,21 @@ export async function sendRoutineReminderToLine(
   message += `เวลา: ${timeStr} น.\n`
   message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
 
-  // บันทึกแจ้งเตือนบนเว็บด้วย
-  await saveWebNotification(
-    `⏰ ${routine.title}`,
-    `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น.`,
-    'routine_reminder'
-  )
+  if (routine.user_id) {
+    await saveWebNotification(
+      routine.user_id,
+      `⏰ ${routine.title}`,
+      `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น.`,
+      'routine_reminder'
+    )
+  }
 
   return sendTextMessage(lineUserId, message)
 }
 
 export async function sendEventReminderToLine(
   lineUserId: string,
-  event: { id: string; title: string; event_date: string; event_time: string | null; location: string | null },
+  event: { id: string; user_id?: string; title: string; event_date: string; event_time: string | null; location: string | null },
   timeLabel: string
 ) {
   let message = `แจ้งเตือน: ${timeLabel}\n`
@@ -152,18 +148,20 @@ export async function sendEventReminderToLine(
   if (event.event_time) message += `เวลา: ${event.event_time}\n`
   if (event.location) message += `สถานที่: ${event.location}\n`
 
-  // บันทึกแจ้งเตือนบนเว็บด้วย
-  const webMessage = [
-    event.event_date,
-    event.event_time,
-    event.location
-  ].filter(Boolean).join(' | ')
-  await saveWebNotification(
-    `${timeLabel} ${event.title}`,
-    webMessage,
-    'reminder',
-    event.id
-  )
+  if (event.user_id) {
+    const webMessage = [
+      event.event_date,
+      event.event_time,
+      event.location
+    ].filter(Boolean).join(' | ')
+    await saveWebNotification(
+      event.user_id,
+      `${timeLabel} ${event.title}`,
+      webMessage,
+      'reminder',
+      event.id
+    )
+  }
 
   return sendTextMessage(lineUserId, message)
 }

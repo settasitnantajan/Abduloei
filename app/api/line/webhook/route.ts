@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { replyLineMessage } from '@/lib/line/client'
+import { verifyAndLinkCode, getLinkingStatus } from '@/lib/db/line-linking'
+import { adminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
   const channelSecret = process.env.LINE_CHANNEL_SECRET
@@ -50,26 +52,52 @@ export async function POST(request: Request) {
 
     console.log(`[LINE Webhook] Event: ${eventType}, User ID: ${userId}`)
 
-    if (eventType === 'follow') {
-      console.log(`[LINE Webhook] New follower! LINE User ID: ${userId}`)
-      console.log('[LINE Webhook] เอา User ID นี้ไปใส่ใน .env.local เป็น LINE_USER_ID')
+    if (eventType === 'follow' && userId) {
+      // เช็คว่า LINE ID นี้ผูกอยู่แล้วหรือยัง
+      const { data: existing } = await adminClient
+        .from('user_profiles')
+        .select('user_id')
+        .eq('line_user_id', userId)
+        .maybeSingle()
 
       if (event.replyToken) {
-        await replyLineMessage(event.replyToken, [
-          { type: 'text', text: 'สวัสดีค่ะ! ระบบพร้อมส่งแจ้งเตือนให้แล้วนะคะ' },
-        ])
+        if (existing) {
+          await replyLineMessage(event.replyToken, [
+            { type: 'text', text: 'ยินดีต้อนรับกลับค่ะ! ระบบพร้อมส่งแจ้งเตือนให้แล้วนะคะ' },
+          ])
+        } else {
+          await replyLineMessage(event.replyToken, [
+            { type: 'text', text: 'สวัสดีค่ะ! กรุณาพิมพ์รหัส 6 หลักจากเว็บเพื่อเชื่อมบัญชีนะคะ' },
+          ])
+        }
       }
     }
 
-    if (eventType === 'message') {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[LINE Webhook] Message from ${userId}: ${event.message?.text || '(non-text)'}`)
-      }
+    if (eventType === 'message' && userId) {
+      const messageText = event.message?.text?.trim() || ''
 
-      if (event.replyToken) {
-        await replyLineMessage(event.replyToken, [
-          { type: 'text', text: 'ได้รับข้อความแล้วค่ะ' },
-        ])
+      // เช็คว่าเป็น linking code 6 หลักหรือไม่
+      if (/^\d{6}$/.test(messageText)) {
+        const result = await verifyAndLinkCode(userId, messageText)
+
+        if (event.replyToken) {
+          if (result.success) {
+            await replyLineMessage(event.replyToken, [
+              { type: 'text', text: 'เชื่อมบัญชีสำเร็จแล้วค่ะ! ระบบจะส่งแจ้งเตือนนัดหมายและกิจวัตรให้ทาง LINE นะคะ' },
+            ])
+          } else {
+            await replyLineMessage(event.replyToken, [
+              { type: 'text', text: `${result.error || 'รหัสไม่ถูกต้อง'} กรุณาสร้างรหัสใหม่จากเว็บค่ะ` },
+            ])
+          }
+        }
+      } else {
+        // ข้อความทั่วไป
+        if (event.replyToken) {
+          await replyLineMessage(event.replyToken, [
+            { type: 'text', text: 'ได้รับข้อความแล้วค่ะ' },
+          ])
+        }
       }
     }
   }
