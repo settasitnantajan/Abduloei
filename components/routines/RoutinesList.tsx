@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Repeat, Plus, Clock, Trash2, Bell, X, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { createRoutine, toggleRoutine, deleteRoutine } from '@/app/actions/routines';
 import type { Routine } from '@/lib/db/routines';
 import type { CreateRoutineInput } from '@/lib/db/routines';
@@ -307,30 +308,14 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
           </div>
 
           {/* Right: actions */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {/* Toggle active */}
-            <button
-              onClick={handleToggle}
+            <Switch
+              checked={routine.is_active}
+              onCheckedChange={handleToggle}
               disabled={isToggling || isDeleting}
-              title={routine.is_active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-              className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500/40 disabled:cursor-not-allowed ${
-                routine.is_active
-                  ? 'bg-purple-600 hover:bg-purple-500'
-                  : 'bg-[#333333] hover:bg-[#3A3A3A]'
-              }`}
-            >
-              {isToggling ? (
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="w-3 h-3 text-white animate-spin" />
-                </span>
-              ) : (
-                <span
-                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
-                    routine.is_active ? 'translate-x-5' : 'translate-x-0.5'
-                  }`}
-                />
-              )}
-            </button>
+              className="data-checked:bg-purple-600 data-unchecked:bg-[#444444]"
+            />
 
             {/* Delete */}
             <button
