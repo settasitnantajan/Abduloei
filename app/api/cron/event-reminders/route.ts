@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendEventReminderToLine, sendRoutineReminderToLine, resetReminderTracking } from '@/lib/line/notifications'
+import { sendEventReminderToLine, sendRoutineReminderToLine, sendTaskReminderToLine, resetReminderTracking, resetTaskReminderTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
@@ -40,6 +40,7 @@ export async function GET(request: Request) {
   }
 
   resetReminderTracking()
+  resetTaskReminderTracking()
   const now = new Date()
   const nowMs = now.getTime()
   const sent: string[] = []
@@ -123,6 +124,75 @@ export async function GET(request: Request) {
                 .update({ reminder_1h_sent: true })
                 .eq('id', event.id)
               sent.push(`1h: ${event.title} (${userId ? userId.slice(0, 8) : 'env'})`)
+            }
+          }
+        }
+      }
+
+      // --- เตือนงาน (Tasks) ก่อน 1 วัน (22-26 ชม.) ---
+      let taskQuery1d = adminClient
+        .from('tasks')
+        .select('id, user_id, title, description, due_date, due_time')
+        .eq('status', 'pending')
+        .eq('reminder_1d_sent', false)
+        .not('due_date', 'is', null)
+
+      if (userFilter) taskQuery1d = taskQuery1d.eq('user_id', userId)
+
+      const { data: tasks1d } = await taskQuery1d
+
+      if (tasks1d) {
+        for (const task of tasks1d) {
+          const taskDateTime = buildEventDate(task.due_date, task.due_time)
+          if (!taskDateTime) continue
+
+          const diffMs = taskDateTime.getTime() - nowMs
+          const diffHours = diffMs / (1000 * 60 * 60)
+
+          if (diffHours >= 22 && diffHours <= 26) {
+            const result = await sendTaskReminderToLine(lineUserId, task, 'พรุ่งนี้มีงาน!')
+            if (result.success) {
+              await adminClient
+                .from('tasks')
+                .update({ reminder_1d_sent: true })
+                .eq('id', task.id)
+              sent.push(`task-1d: ${task.title} (${userId ? userId.slice(0, 8) : 'env'})`)
+            }
+          }
+        }
+      }
+
+      // --- เตือนงาน (Tasks) ก่อน 1 ชม. (40-80 นาที) ---
+      let taskQuery1h = adminClient
+        .from('tasks')
+        .select('id, user_id, title, description, due_date, due_time')
+        .eq('status', 'pending')
+        .eq('reminder_1h_sent', false)
+        .not('due_date', 'is', null)
+        .not('due_time', 'is', null)
+
+      if (userFilter) taskQuery1h = taskQuery1h.eq('user_id', userId)
+
+      const { data: tasks1h } = await taskQuery1h
+
+      if (tasks1h) {
+        for (const task of tasks1h) {
+          if (!task.due_time) continue
+
+          const taskDateTime = buildEventDate(task.due_date, task.due_time)
+          if (!taskDateTime) continue
+
+          const diffMs = taskDateTime.getTime() - nowMs
+          const diffMinutes = diffMs / (1000 * 60)
+
+          if (diffMinutes >= 40 && diffMinutes <= 80) {
+            const result = await sendTaskReminderToLine(lineUserId, task, 'อีก 1 ชั่วโมง!')
+            if (result.success) {
+              await adminClient
+                .from('tasks')
+                .update({ reminder_1h_sent: true })
+                .eq('id', task.id)
+              sent.push(`task-1h: ${task.title} (${userId ? userId.slice(0, 8) : 'env'})`)
             }
           }
         }

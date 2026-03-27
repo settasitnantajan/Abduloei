@@ -201,3 +201,40 @@ export async function sendEventReminderToLine(
 
   return sendTextMessage(lineUserId, message)
 }
+
+const taskNotifiedUsers = new Set<string>()
+
+export function resetTaskReminderTracking() {
+  taskNotifiedUsers.clear()
+}
+
+export async function sendTaskReminderToLine(
+  lineUserId: string,
+  task: { id: string; user_id?: string; title: string; description?: string | null; due_date: string; due_time: string | null },
+  timeLabel: string
+) {
+  let message = `แจ้งเตือนงาน: ${timeLabel}\n`
+  message += '━━━━━━━━━━━━━━━\n'
+  message += `📋 ${task.title}\n`
+  if (task.description) message += `${task.description}\n`
+  if (task.due_date) message += `📅 ${task.due_date}\n`
+  if (task.due_time) message += `⏰ ${task.due_time.slice(0, 5)} น.\n`
+
+  const taskKey = `${task.user_id}:${task.id}:${timeLabel}`
+  if (task.user_id && !taskNotifiedUsers.has(taskKey)) {
+    taskNotifiedUsers.add(taskKey)
+    const webMessage = [
+      task.due_date,
+      task.due_time ? task.due_time.slice(0, 5) + ' น.' : null
+    ].filter(Boolean).join(' | ')
+    await saveWebNotification(
+      task.user_id,
+      `${timeLabel} ${task.title}`,
+      webMessage,
+      'task_reminder',
+      task.id
+    )
+  }
+
+  return sendTextMessage(lineUserId, message)
+}
