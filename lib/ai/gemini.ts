@@ -1,7 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const PRIMARY_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-2.0-flash-lite';
+const GROQ_PRIMARY_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_FALLBACK_MODEL = 'llama-3.3-70b-versatile';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash';
 
 const SYSTEM_PROMPT = `คุณคือ "Abduloei" ผู้ช่วยอัจฉริยะในบ้านสำหรับครอบครัวไทย
 
@@ -56,11 +57,60 @@ interface ChatMessage {
 }
 
 /**
- * Generate AI response with enhanced context and empathy
- * @param userMessage - Current user message
- * @param conversationHistory - Recent conversation history (up to 50 messages)
- * @param additionalContext - Extra context (events, tasks, memories)
- * @param emotionHint - Detected user emotion for empathetic response
+ * เรียก Groq API (OpenAI-compatible)
+ */
+async function callGroq(
+  model: string,
+  messages: { role: string; content: string }[],
+  maxTokens: number = 1500,
+  temperature: number = 0.9
+): Promise<string> {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    const status = res.status;
+    throw { status, message: error?.error?.message || `Groq API error ${status}` };
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+/**
+ * เรียก Gemini API (fallback)
+ */
+async function callGemini(
+  fullPrompt: string,
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: GEMINI_FALLBACK_MODEL });
+  const chat = model.startChat({
+    history,
+    generationConfig: { maxOutputTokens: 1500, temperature: 1.0 },
+  });
+
+  const result = await chat.sendMessage(fullPrompt);
+  return result.response.text() || '';
+}
+
+/**
+ * Generate AI response — Groq primary, Gemini fallback
  */
 export async function generateAIResponse(
   userMessage: string,
@@ -68,49 +118,11 @@ export async function generateAIResponse(
   additionalContext?: string,
   emotionHint?: string
 ): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
-
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-  // Build conversation history — Gemini requires:
-  // 1. History must start with 'user' role
-  // 2. Roles must alternate (no consecutive same role)
-  // 3. No empty content
-  const rawHistory = conversationHistory
-    .filter((msg) => msg.content && msg.content.trim().length > 0)
-    .map((msg) => ({
-      role: (msg.role === 'user' ? 'user' : 'model') as 'user' | 'model',
-      parts: [{ text: msg.content }],
-    }));
-
-  // Merge consecutive same-role messages and ensure alternating pattern
-  const history: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
-  for (const entry of rawHistory) {
-    const last = history[history.length - 1];
-    if (last && last.role === entry.role) {
-      last.parts[0].text += '\n' + entry.parts[0].text;
-    } else {
-      history.push(entry);
-    }
-  }
-
-  // Gemini requires history to start with 'user' — drop leading 'model' entries
-  while (history.length > 0 && history[0].role === 'model') {
-    history.shift();
-  }
-
-  // Gemini requires history to end with 'model' — drop trailing entry if it's 'user'
-  while (history.length > 0 && history[history.length - 1].role === 'user') {
-    history.pop();
-  }
-
-  // Build context-aware prompt
-  let fullPrompt = SYSTEM_PROMPT;
+  // Build system prompt with context
+  let systemPrompt = SYSTEM_PROMPT;
 
   if (additionalContext && additionalContext.trim().length > 0) {
-    fullPrompt += `\n\n=== ข้อมูลบริบทเพิ่มเติม ===\n${additionalContext}\n`;
+    systemPrompt += `\n\n=== ข้อมูลบริบทเพิ่มเติม ===\n${additionalContext}\n`;
   }
 
   if (emotionHint && emotionHint.trim().length > 0) {
@@ -120,60 +132,69 @@ export async function generateAIResponse(
       confused: '🤔 ผู้ใช้กำลังสับสนงง — ค่อยๆ อธิบายอย่างใจเย็น ไม่ตัดสิน',
       seeking_advice: '💭 ผู้ใช้กำลังขอคำแนะนำ — ฟังให้เข้าใจแล้วให้คำตอบที่เจาะจง',
     };
-    const emotionInstruction = emotionMap[emotionHint] || `💡 อารมณ์ผู้ใช้: ${emotionHint}`;
-    fullPrompt += `\n${emotionInstruction}\n`;
+    systemPrompt += `\n${emotionMap[emotionHint] || `💡 อารมณ์ผู้ใช้: ${emotionHint}`}\n`;
   }
 
-  fullPrompt += `\n\nUser: ${userMessage}`;
+  // Build messages for Groq (OpenAI format)
+  const groqMessages: { role: string; content: string }[] = [
+    { role: 'system', content: systemPrompt },
+    ...conversationHistory
+      .filter(msg => msg.content && msg.content.trim().length > 0)
+      .map(msg => ({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content })),
+    { role: 'user', content: userMessage },
+  ];
 
-  // Try primary model first, fallback on rate limit (429)
-  const modelsToTry = [PRIMARY_MODEL, FALLBACK_MODEL];
+  // Try Groq models first
+  const groqModels = [GROQ_PRIMARY_MODEL, GROQ_FALLBACK_MODEL];
 
-  for (const modelName of modelsToTry) {
-    // Retry up to 2 times per model (for short rate-limit windows)
-    for (let attempt = 0; attempt < 2; attempt++) {
+  if (process.env.GROQ_API_KEY) {
+    for (const model of groqModels) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const chat = model.startChat({
-          history,
-          generationConfig: {
-            maxOutputTokens: 1500,
-            temperature: 1.0,
-          },
-        });
-
-        const result = await chat.sendMessage(fullPrompt);
-        const response = await result.response;
-        const text = response.text();
-
-        return text || 'ขอโทษครับ ผมไม่สามารถตอบคำถามนี้ได้ในขณะนี้';
+        const response = await callGroq(model, groqMessages);
+        if (response) return response;
       } catch (error: any) {
-        const status = error?.status ?? error?.httpStatusCode ?? error?.code;
-        const errMsg = String(error?.message || '');
-        const isRateLimit = status === 429 || errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED');
-        const isModelNotFound = status === 404 || errMsg.includes('not found') || errMsg.includes('NOT_FOUND');
+        const status = error?.status;
+        const isRateLimit = status === 429;
+        console.warn(`Groq ${model} error (${status}):`, error?.message?.slice(0, 100));
 
-        // ถ้า rate limit per minute → รอ 6 วินาทีแล้วลอง retry (attempt 0 → retry, attempt 1 → fallback)
-        if (isRateLimit && attempt === 0 && errMsg.includes('retry')) {
-          console.warn(`Rate limited on ${modelName}, retrying in 6s...`);
-          await new Promise(resolve => setTimeout(resolve, 6000));
-          continue;
+        if (isRateLimit && model === groqModels[groqModels.length - 1]) {
+          // ทุก Groq model ติด rate limit → fallback ไป Gemini
+          break;
         }
-
-        // ถ้า rate limit หรือ model ไม่มี และยังมี model สำรอง → ลอง model ถัดไป
-        if ((isRateLimit || isModelNotFound) && modelName !== FALLBACK_MODEL) {
-          console.warn(`Error on ${modelName} (${isRateLimit ? 'rate limit' : 'not found'}), falling back to ${FALLBACK_MODEL}`);
-          break; // break inner loop → next model
-        }
-
-        console.error(`Gemini API error (${modelName}):`, error);
-
-        if (isRateLimit) {
-          throw new Error('RATE_LIMIT');
-        }
-        throw new Error('ไม่สามารถเชื่อมต่อกับ AI ได้ กรุณาลองใหม่อีกครั้ง');
+        if (!isRateLimit) break; // error อื่น → fallback ไป Gemini
       }
     }
+  }
+
+  // Fallback: Gemini
+  try {
+    // Build Gemini history format
+    const rawHistory = conversationHistory
+      .filter(msg => msg.content && msg.content.trim().length > 0)
+      .map(msg => ({
+        role: (msg.role === 'user' ? 'user' : 'model') as 'user' | 'model',
+        parts: [{ text: msg.content }],
+      }));
+
+    const history: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+    for (const entry of rawHistory) {
+      const last = history[history.length - 1];
+      if (last && last.role === entry.role) {
+        last.parts[0].text += '\n' + entry.parts[0].text;
+      } else {
+        history.push(entry);
+      }
+    }
+    while (history.length > 0 && history[0].role === 'model') history.shift();
+    while (history.length > 0 && history[history.length - 1].role === 'user') history.pop();
+
+    const fullPrompt = systemPrompt + `\n\nUser: ${userMessage}`;
+    const response = await callGemini(fullPrompt, history);
+    if (response) return response;
+  } catch (error: any) {
+    console.error('Gemini fallback error:', error?.message?.slice(0, 100));
+    const isRateLimit = error?.status === 429 || String(error?.message || '').includes('429');
+    if (isRateLimit) throw new Error('RATE_LIMIT');
   }
 
   throw new Error('ไม่สามารถเชื่อมต่อกับ AI ได้ กรุณาลองใหม่อีกครั้ง');
@@ -184,9 +205,5 @@ export function parseAICommands(content: string): {
   commandType?: 'event' | 'task' | 'note';
   extractedData?: Record<string, unknown>;
 } {
-  // TODO: Implement command parsing in future
-  // This will detect if AI wants to create events/tasks/notes
-  return {
-    hasCommand: false,
-  };
+  return { hasCommand: false };
 }
