@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendEventReminderToLine, sendRoutineReminderToLine } from '@/lib/line/notifications'
+import { sendEventReminderToLine, sendRoutineReminderToLine, resetReminderTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: 'No linked users, skipped' })
   }
 
+  resetReminderTracking()
   const now = new Date()
   const nowMs = now.getTime()
   const sent: string[] = []
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
       let query1d = adminClient
         .from('events')
-        .select('id, user_id, title, event_date, event_time, location')
+        .select('id, user_id, title, description, event_date, event_time, location')
         .eq('reminder_1d_sent', false)
         .gte('event_date', in23h.toISOString().split('T')[0])
         .lte('event_date', in25h.toISOString().split('T')[0])
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
 
       let query1h = adminClient
         .from('events')
-        .select('id, user_id, title, event_date, event_time, location')
+        .select('id, user_id, title, description, event_date, event_time, location')
         .eq('reminder_1h_sent', false)
         .gte('event_date', in55m.toISOString().split('T')[0])
         .lte('event_date', in65m.toISOString().split('T')[0])

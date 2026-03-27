@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { sendDailySummaryToLine } from '@/lib/line/notifications'
+import { sendDailySummaryToLine, resetDailySummaryTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.message }, { status: auth.status })
   }
 
+  resetDailySummaryTracking()
   const linkedUsers = await getAllLinkedUsers()
 
   if (linkedUsers.length === 0) {

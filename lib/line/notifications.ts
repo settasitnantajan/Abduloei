@@ -22,6 +22,13 @@ async function saveWebNotification(userId: string, title: string, message: strin
   }
 }
 
+// เก็บ track ว่า user ไหนบันทึก web notification แล้วในรอบนี้
+const dailySummaryNotifiedUsers = new Set<string>()
+
+export async function resetDailySummaryTracking() {
+  dailySummaryNotifiedUsers.clear()
+}
+
 export async function sendDailySummaryToLine(lineUserId: string, userId?: string) {
   const now = new Date()
   const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -29,7 +36,7 @@ export async function sendDailySummaryToLine(lineUserId: string, userId?: string
   // Base queries
   let eventsQuery = adminClient
     .from('events')
-    .select('title, event_time, location, priority')
+    .select('title, description, event_time, location, priority')
     .eq('event_date', today)
     .order('event_time', { ascending: true })
 
@@ -72,9 +79,13 @@ export async function sendDailySummaryToLine(lineUserId: string, userId?: string
   if (events && events.length > 0) {
     message += `\nนัดหมายวันนี้ (${events.length} รายการ):\n`
     for (const e of events) {
-      const time = e.event_time ? ` ${e.event_time}` : ''
-      const loc = e.location ? ` @ ${e.location}` : ''
-      message += `- ${e.title}${time}${loc}\n`
+      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+      const loc = e.location && e.location !== 'ไม่มี' ? e.location : ''
+      message += `\n📌 ${e.title}`
+      if (time) message += ` (${time})`
+      if (loc) message += `\n   📍 ${loc}`
+      if (e.description) message += `\n   ${e.description}`
+      message += '\n'
     }
   } else {
     message += '\nวันนี้ไม่มีนัดหมาย\n'
@@ -98,19 +109,35 @@ export async function sendDailySummaryToLine(lineUserId: string, userId?: string
 
   message += '\nขอให้เป็นวันที่ดีนะคะ!'
 
-  // บันทึกแจ้งเตือนบนเว็บด้วย
-  if (userId) {
+  // บันทึกแจ้งเตือนบนเว็บ (แค่ 1 ครั้งต่อ user)
+  if (userId && !dailySummaryNotifiedUsers.has(userId)) {
+    dailySummaryNotifiedUsers.add(userId)
     const eventCount = events?.length ?? 0
     const taskCount = tasks?.length ?? 0
+    const eventDetails = events?.map(e => {
+      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+      return `${e.title}${time ? ' (' + time + ')' : ''}${e.description ? ' - ' + e.description : ''}`
+    }).join(', ') || ''
+    const webMsg = eventCount > 0
+      ? `นัดหมาย ${eventCount}: ${eventDetails}` + (taskCount > 0 ? ` | งานค้าง ${taskCount} รายการ` : '')
+      : `ไม่มีนัดหมาย` + (taskCount > 0 ? ` | งานค้าง ${taskCount} รายการ` : '')
     await saveWebNotification(
       userId,
       `สรุปวันนี้ (${today})`,
-      `นัดหมาย ${eventCount} รายการ, งานค้าง ${taskCount} รายการ`,
+      webMsg,
       'daily_summary'
     )
   }
 
   return sendTextMessage(lineUserId, truncateMessage(message))
+}
+
+const routineNotifiedUsers = new Set<string>()
+const eventNotifiedUsers = new Set<string>()
+
+export function resetReminderTracking() {
+  routineNotifiedUsers.clear()
+  eventNotifiedUsers.clear()
 }
 
 export async function sendRoutineReminderToLine(
@@ -124,7 +151,9 @@ export async function sendRoutineReminderToLine(
   message += `เวลา: ${timeStr} น.\n`
   message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
 
-  if (routine.user_id) {
+  const routineKey = `${routine.user_id}:${routine.id}`
+  if (routine.user_id && !routineNotifiedUsers.has(routineKey)) {
+    routineNotifiedUsers.add(routineKey)
     await saveWebNotification(
       routine.user_id,
       `⏰ ${routine.title}`,
@@ -138,21 +167,24 @@ export async function sendRoutineReminderToLine(
 
 export async function sendEventReminderToLine(
   lineUserId: string,
-  event: { id: string; user_id?: string; title: string; event_date: string; event_time: string | null; location: string | null },
+  event: { id: string; user_id?: string; title: string; description?: string | null; event_date: string; event_time: string | null; location: string | null },
   timeLabel: string
 ) {
   let message = `แจ้งเตือน: ${timeLabel}\n`
   message += '━━━━━━━━━━━━━━━\n'
-  message += `${event.title}\n`
-  if (event.event_date) message += `วันที่: ${event.event_date}\n`
-  if (event.event_time) message += `เวลา: ${event.event_time}\n`
-  if (event.location) message += `สถานที่: ${event.location}\n`
+  message += `📌 ${event.title}\n`
+  if (event.description) message += `${event.description}\n`
+  if (event.event_date) message += `📅 ${event.event_date}\n`
+  if (event.event_time) message += `⏰ ${event.event_time.slice(0, 5)} น.\n`
+  if (event.location && event.location !== 'ไม่มี') message += `📍 ${event.location}\n`
 
-  if (event.user_id) {
+  const eventKey = `${event.user_id}:${event.id}:${timeLabel}`
+  if (event.user_id && !eventNotifiedUsers.has(eventKey)) {
+    eventNotifiedUsers.add(eventKey)
     const webMessage = [
       event.event_date,
-      event.event_time,
-      event.location
+      event.event_time?.slice(0, 5) + ' น.',
+      event.location && event.location !== 'ไม่มี' ? event.location : null
     ].filter(Boolean).join(' | ')
     await saveWebNotification(
       event.user_id,
