@@ -4,10 +4,11 @@ import { getChatMessages, saveChatMessage, queryCommands, getPendingCommand, mar
 import { createClient } from '@/lib/supabase/server';
 import { detectConfirmation, generateConfirmationPrompt } from '@/lib/ai/confirmation-detector';
 import { CommandMetadata } from '@/lib/types/command';
-import { createEventWithChecklist, deleteAllEvents, deleteEventsByFilter, getUserEvents, updateEvent } from '@/lib/db/events';
-import { createTask, deleteAllTasks, getUserTasks } from '@/lib/db/tasks';
-import { createNote, deleteAllNotes, getUserNotes } from '@/lib/db/notes';
-import { createRoutine, getUserRoutines } from '@/lib/db/routines';
+import { createEventWithChecklist, deleteAllEvents, deleteEventsByFilter, getUserEvents, updateEvent, deleteEvent } from '@/lib/db/events';
+import { createTask, deleteAllTasks, getUserTasks, updateTask, deleteTask } from '@/lib/db/tasks';
+import { createNote, deleteAllNotes, getUserNotes, updateNote, deleteNote } from '@/lib/db/notes';
+import { createRoutine, getUserRoutines, updateRoutine, deleteRoutine, deleteAllRoutines } from '@/lib/db/routines';
+import { createMonthlyRoutine, getUserMonthlyRoutines, updateMonthlyRoutine, deleteMonthlyRoutine, deleteAllMonthlyRoutines } from '@/lib/db/monthly-routines';
 import { buildAIContext, contextToPrompt, detectUserEmotion, getEmpatheticPrefix } from '@/lib/ai/context-builder';
 import { processMessageForMemories } from '@/lib/db/memories';
 import { searchWeb, formatSearchResults } from '@/lib/ai/web-searcher';
@@ -16,6 +17,74 @@ import { parseThaiDate } from '@/lib/utils/thai-date-parser';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// === Variation templates เพื่อไม่ให้ AI ตอบซ้ำ ===
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+const SUCCESS_CREATE: Record<string, string[]> = {
+  'นัดหมาย': [
+    'เอาเลยๆ สร้างนัด "$T" ให้แล้วนะ ✅',
+    'โอเคๆ จัดนัด "$T" เรียบร้อย ✅',
+    'ได้เลย นัด "$T" เซ็ตไว้แล้ว ✅',
+    'สร้างนัด "$T" ให้แล้วนะ อย่าลืมล่ะ ✅',
+  ],
+  'งาน': [
+    'เพิ่มงาน "$T" ไว้แล้วนะ ✅',
+    'โอเค จดงาน "$T" ให้แล้ว ✅',
+    'ได้เลย งาน "$T" เพิ่มไว้แล้ว ✅',
+    'เรียบร้อย งาน "$T" อยู่ใน list แล้ว ✅',
+  ],
+  'บันทึก': [
+    'จดไว้ให้แล้วนะ "$T" ✅',
+    'โอเคๆ บันทึก "$T" เรียบร้อย ✅',
+    'เซฟไว้แล้ว "$T" ✅',
+    'จดเรียบร้อย "$T" ✅',
+  ],
+  'กิจวัตร': [
+    'สร้างกิจวัตร "$T" ให้แล้วนะ $D ✅',
+    'เรียบร้อย กิจวัตร "$T" $D ✅',
+    'โอเค เซ็ตกิจวัตร "$T" $D เอาไว้แล้ว ✅',
+  ],
+  'กิจวัตรรายเดือน': [
+    'สร้างกิจวัตรรายเดือน "$T" ทุก$D ให้แล้วนะ ✅',
+    'เรียบร้อย "$T" ทุก$D เซ็ตไว้แล้ว ✅',
+    'โอเค "$T" ทุก$D จัดให้แล้ว ✅',
+  ],
+};
+
+const SUCCESS_DELETE = [
+  'ลบ$T "$N" ให้แล้วนะ ✅',
+  'เรียบร้อย ลบ$T "$N" แล้ว ✅',
+  'โอเค $T "$N" ลบไปแล้ว ✅',
+];
+
+const SUCCESS_EDIT = [
+  'แก้ไข$Tเรียบร้อยแล้วนะ ✅',
+  'อัปเดต$Tให้แล้ว ✅',
+  'โอเค แก้$Tเรียบร้อย ✅',
+];
+
+const REJECT_RESPONSES = [
+  'โอเค ยกเลิกแล้วนะ',
+  'ได้เลย ไม่ทำแล้วนะ',
+  'เอาใหม่ก็บอกได้เลยนะ',
+  'ยกเลิกแล้ว มีอะไรอื่นบอกได้นะ',
+];
+
+function successMsg(type: string, title: string, detail?: string): string {
+  const templates = SUCCESS_CREATE[type] || [`${type} "$T" เรียบร้อยแล้ว ✅`];
+  return pick(templates).replace('$T', title).replace('$D', detail || '');
+}
+
+function deleteMsg(typeName: string, title: string): string {
+  return pick(SUCCESS_DELETE).replace('$T', typeName).replace('$N', title);
+}
+
+function editMsg(typeName: string): string {
+  return pick(SUCCESS_EDIT).replace('$T', typeName);
+}
 
 interface ChatRequestBody {
   conversationId: string;
@@ -103,9 +172,9 @@ export async function POST(request: NextRequest) {
             await markCommandExecuted(pendingMsg.id);
             const checklistCount = pendingCommand.checklist_items?.length || 0;
             if (checklistCount > 0) {
-              aiResponse = `สร้าง${typeName} "${pendingCommand.title}" พร้อม checklist ${checklistCount} รายการเรียบร้อยแล้วค่ะ ✅`;
+              aiResponse = successMsg(typeName, pendingCommand.title) + ` (พร้อม checklist ${checklistCount} รายการ)`;
             } else {
-              aiResponse = `สร้าง${typeName} "${pendingCommand.title}" เรียบร้อยแล้วค่ะ ✅`;
+              aiResponse = successMsg(typeName, pendingCommand.title);
             }
           } else {
             aiResponse = `ขอโทษค่ะ ไม่สามารถสร้าง${typeName}ได้: ${error}`;
@@ -122,9 +191,9 @@ export async function POST(request: NextRequest) {
 
           if (success) {
             await markCommandExecuted(pendingMsg.id);
-            aiResponse = `สร้าง${typeName} "${pendingCommand.title}" เรียบร้อยแล้วค่ะ ✅`;
+            aiResponse = successMsg(typeName, pendingCommand.title);
           } else {
-            aiResponse = `ขอโทษค่ะ ไม่สามารถสร้าง${typeName}ได้: ${error}`;
+            aiResponse = `ขอโทษนะ สร้าง${typeName}ไม่ได้: ${error}`;
           }
         } else if (pendingCommand?.type === 'create_routine') {
           const DAYS_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
@@ -143,10 +212,28 @@ export async function POST(request: NextRequest) {
               ? 'ทุกวัน'
               : (pendingCommand.days_of_week || []).map((d: number) => DAYS_TH[d]).join(' ');
             const timeStr = pendingCommand.routine_time || '09:00';
-            const remindMin = pendingCommand.remind_before_minutes ?? 10;
-            aiResponse = `สร้างกิจวัตร "${pendingCommand.title}" ${daysLabel} เวลา ${timeStr} น. (เตือนก่อน ${remindMin} นาที) เรียบร้อยแล้ว ✅`;
+            aiResponse = successMsg('กิจวัตร', pendingCommand.title, `${daysLabel} เวลา ${timeStr} น.`);
           } else {
-            aiResponse = `ขอโทษค่ะ ไม่สามารถสร้างกิจวัตรได้: ${error}`;
+            aiResponse = `ขอโทษนะ สร้างกิจวัตรไม่ได้: ${error}`;
+          }
+        } else if (pendingCommand?.type === 'create_monthly_routine') {
+          const dayOfMonth = pendingCommand.day_of_month || 1;
+          const { success, error } = await createMonthlyRoutine({
+            title: pendingCommand.title,
+            description: pendingCommand.description,
+            routine_time: pendingCommand.routine_time || '09:00',
+            day_of_month: dayOfMonth,
+            remind_before_minutes: pendingCommand.remind_before_minutes ?? 10,
+            source_message: pendingMetadata.command?.raw || message,
+          });
+
+          if (success) {
+            await markCommandExecuted(pendingMsg.id);
+            const timeStr = pendingCommand.routine_time || '09:00';
+            const dayLabel = dayOfMonth === 32 ? 'สิ้นเดือน' : `วันที่ ${dayOfMonth}`;
+            aiResponse = successMsg('กิจวัตรรายเดือน', pendingCommand.title, `${dayLabel} เวลา ${timeStr} น.`);
+          } else {
+            aiResponse = `ขอโทษนะ สร้างกิจวัตรรายเดือนไม่ได้: ${error}`;
           }
         } else if (pendingCommand?.type === 'create_note') {
           const { success, error } = await createNote({
@@ -157,9 +244,9 @@ export async function POST(request: NextRequest) {
 
           if (success) {
             await markCommandExecuted(pendingMsg.id);
-            aiResponse = `บันทึก "${pendingCommand.title}" เรียบร้อยแล้วค่ะ ✅`;
+            aiResponse = successMsg('บันทึก', pendingCommand.title);
           } else {
-            aiResponse = `ขอโทษค่ะ ไม่สามารถบันทึกได้: ${error}`;
+            aiResponse = `ขอโทษนะ บันทึกไม่ได้: ${error}`;
           }
         } else if (pendingCommand?.type === 'delete_all') {
           // ลบข้อมูลตาม filter
@@ -172,21 +259,15 @@ export async function POST(request: NextRequest) {
           let eventsResult = { count: 0 };
           let tasksResult = { count: 0 };
           let notesResult = { count: 0 };
+          let routinesResult = { count: 0 };
+          let monthlyRoutinesResult = { count: 0 };
 
           if (filterTitle || filterDate) {
-            // ลบเฉพาะรายการที่ match → ใช้ filter-based delete
             if (!filterType || filterType === 'create_event') {
               const result = await deleteEventsByFilter(filterDate, filterTitle);
               eventsResult = { count: result.count };
             }
-            if (!filterType || filterType === 'create_task') {
-              // tasks ไม่มี date filter เหมือน events, ใช้ title filter ผ่าน clearAllCommands
-            }
-            if (!filterType || filterType === 'create_note') {
-              // notes ไม่มี date filter เหมือน events, ใช้ title filter ผ่าน clearAllCommands
-            }
           } else {
-            // ลบตามประเภท หรือลบทั้งหมด
             if (isFilterAll || filterType === 'create_event') {
               const result = await deleteAllEvents();
               eventsResult = { count: result.count };
@@ -199,53 +280,194 @@ export async function POST(request: NextRequest) {
               const result = await deleteAllNotes();
               notesResult = { count: result.count };
             }
+            if (isFilterAll || filterType === 'create_routine') {
+              const result = await deleteAllRoutines();
+              routinesResult = { count: result.count };
+            }
+            if (isFilterAll) {
+              const result = await deleteAllMonthlyRoutines();
+              monthlyRoutinesResult = { count: result.count };
+            }
           }
 
-          // ลบ command metadata ที่ตรงกับ filter
           await clearAllCommands(conversationId, filterDate, filterType, filterTitle);
           await markCommandExecuted(pendingMsg.id);
 
-          const totalDeleted = eventsResult.count + tasksResult.count + notesResult.count;
+          const totalDeleted = eventsResult.count + tasksResult.count + notesResult.count + routinesResult.count + monthlyRoutinesResult.count;
           const parts: string[] = [];
           if (eventsResult.count > 0) parts.push(`นัดหมาย ${eventsResult.count} รายการ`);
           if (tasksResult.count > 0) parts.push(`งาน ${tasksResult.count} รายการ`);
           if (notesResult.count > 0) parts.push(`บันทึก ${notesResult.count} รายการ`);
+          if (routinesResult.count > 0) parts.push(`กิจวัตร ${routinesResult.count} รายการ`);
+          if (monthlyRoutinesResult.count > 0) parts.push(`กิจวัตรรายเดือน ${monthlyRoutinesResult.count} รายการ`);
 
           if (totalDeleted > 0) {
-            aiResponse = `ลบเรียบร้อยแล้วค่ะ ✅ (${parts.join(', ')})\n\nถ้าอยากสร้างนัดใหม่ บอกได้เลยนะคะ 😊`;
+            aiResponse = `ลบเรียบร้อยแล้วนะ ✅ (${parts.join(', ')})\n\nอยากสร้างอะไรใหม่ก็บอกได้เลย`;
           } else {
-            aiResponse = `ไม่มีรายการที่ต้องลบค่ะ ตอนนี้ว่างเปล่าแล้ว 😊`;
+            aiResponse = 'ไม่มีอะไรให้ลบแล้วนะ ว่างเปล่าเลย 😊';
           }
         } else if (pendingCommand?.type === 'edit_event') {
-          const targetEventId = pendingCommand.targetEventId;
-          if (targetEventId) {
+          const targetId = pendingCommand.targetId || pendingCommand.targetEventId;
+          if (targetId) {
             const updates: { title?: string; event_date?: string; event_time?: string; description?: string } = {};
             if (pendingCommand.title) updates.title = pendingCommand.title;
             if (pendingCommand.date) updates.event_date = pendingCommand.date;
             if (pendingCommand.time) updates.event_time = pendingCommand.time;
             if (pendingCommand.description) updates.description = pendingCommand.description;
 
-            const { success, error } = await updateEvent(targetEventId, updates);
-
+            const { success, error } = await updateEvent(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              const changeParts: string[] = [];
-              if (updates.title) changeParts.push(`ชื่อเป็น "${updates.title}"`);
-              if (updates.event_date) {
-                const d = new Date(updates.event_date);
-                changeParts.push(`วันที่เป็น ${d.getDate()}/${d.getMonth() + 1}`);
-              }
-              if (updates.event_time) changeParts.push(`เวลาเป็น ${updates.event_time} น.`);
-              aiResponse = `แก้ไขนัดหมายเรียบร้อยแล้วค่ะ ✅ (${changeParts.join(', ')})`;
+              aiResponse = editMsg('นัดหมาย');
             } else {
-              aiResponse = `ขอโทษค่ะ ไม่สามารถแก้ไขนัดหมายได้: ${error}`;
+              aiResponse = `ขอโทษนะ แก้ไขนัดหมายไม่ได้: ${error}`;
             }
           } else {
-            aiResponse = `ขอโทษค่ะ ไม่พบนัดหมายที่ต้องแก้ไข`;
+            aiResponse = 'ไม่เจอนัดหมายที่จะแก้นะ ลองเช็คชื่ออีกทีได้ไหม';
+          }
+        } else if (pendingCommand?.type === 'edit_task') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const updates: Record<string, unknown> = {};
+            if (pendingCommand.title) updates.title = pendingCommand.title;
+            if (pendingCommand.date) updates.due_date = pendingCommand.date;
+            if (pendingCommand.time) updates.due_time = pendingCommand.time;
+            if (pendingCommand.description) updates.description = pendingCommand.description;
+            if (pendingCommand.priority) updates.priority = pendingCommand.priority;
+
+            const { success, error } = await updateTask(targetId, updates);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = editMsg('งาน');
+            } else {
+              aiResponse = `ขอโทษนะ แก้ไขงานไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจองานที่จะแก้นะ ลองเช็คชื่ออีกทีได้ไหม';
+          }
+        } else if (pendingCommand?.type === 'edit_note') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const updates: Record<string, unknown> = {};
+            if (pendingCommand.title) updates.title = pendingCommand.title;
+            if (pendingCommand.description) updates.content = pendingCommand.description;
+
+            const { success, error } = await updateNote(targetId, updates);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = editMsg('บันทึก');
+            } else {
+              aiResponse = `ขอโทษนะ แก้ไขบันทึกไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอบันทึกที่จะแก้นะ ลองเช็คชื่ออีกทีได้ไหม';
+          }
+        } else if (pendingCommand?.type === 'edit_routine') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const updates: Record<string, unknown> = {};
+            if (pendingCommand.title) updates.title = pendingCommand.title;
+            if (pendingCommand.routine_time) updates.routine_time = pendingCommand.routine_time;
+            if (pendingCommand.days_of_week) updates.days_of_week = pendingCommand.days_of_week;
+            if (pendingCommand.remind_before_minutes != null) updates.remind_before_minutes = pendingCommand.remind_before_minutes;
+
+            const { success, error } = await updateRoutine(targetId, updates);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = editMsg('กิจวัตร');
+            } else {
+              aiResponse = `ขอโทษนะ แก้ไขกิจวัตรไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอกิจวัตรที่จะแก้นะ ลองเช็คชื่ออีกทีได้ไหม';
+          }
+        } else if (pendingCommand?.type === 'edit_monthly_routine') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const updates: Record<string, unknown> = {};
+            if (pendingCommand.title) updates.title = pendingCommand.title;
+            if (pendingCommand.routine_time) updates.routine_time = pendingCommand.routine_time;
+            if (pendingCommand.day_of_month) updates.day_of_month = pendingCommand.day_of_month;
+            if (pendingCommand.remind_before_minutes != null) updates.remind_before_minutes = pendingCommand.remind_before_minutes;
+
+            const { success, error } = await updateMonthlyRoutine(targetId, updates);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = editMsg('กิจวัตรรายเดือน');
+            } else {
+              aiResponse = `ขอโทษนะ แก้ไขกิจวัตรรายเดือนไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอกิจวัตรรายเดือนที่จะแก้นะ ลองเช็คชื่ออีกทีได้ไหม';
+          }
+        } else if (pendingCommand?.type === 'delete_event') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const { success, error } = await deleteEvent(targetId);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = deleteMsg('นัดหมาย', pendingCommand.title);
+            } else {
+              aiResponse = `ขอโทษนะ ลบนัดหมายไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอนัดหมายที่จะลบนะ';
+          }
+        } else if (pendingCommand?.type === 'delete_task') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const { success, error } = await deleteTask(targetId);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = deleteMsg('งาน', pendingCommand.title);
+            } else {
+              aiResponse = `ขอโทษนะ ลบงานไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจองานที่จะลบนะ';
+          }
+        } else if (pendingCommand?.type === 'delete_note') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const { success, error } = await deleteNote(targetId);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = deleteMsg('บันทึก', pendingCommand.title);
+            } else {
+              aiResponse = `ขอโทษนะ ลบบันทึกไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอบันทึกที่จะลบนะ';
+          }
+        } else if (pendingCommand?.type === 'delete_routine') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const { success, error } = await deleteRoutine(targetId);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = deleteMsg('กิจวัตร', pendingCommand.title);
+            } else {
+              aiResponse = `ขอโทษนะ ลบกิจวัตรไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอกิจวัตรที่จะลบนะ';
+          }
+        } else if (pendingCommand?.type === 'delete_monthly_routine') {
+          const targetId = pendingCommand.targetId;
+          if (targetId) {
+            const { success, error } = await deleteMonthlyRoutine(targetId);
+            if (success) {
+              await markCommandExecuted(pendingMsg.id);
+              aiResponse = deleteMsg('กิจวัตรรายเดือน', pendingCommand.title);
+            } else {
+              aiResponse = `ขอโทษนะ ลบกิจวัตรรายเดือนไม่ได้: ${error}`;
+            }
+          } else {
+            aiResponse = 'ไม่เจอกิจวัตรรายเดือนที่จะลบนะ';
           }
         } else {
           await markCommandExecuted(pendingMsg.id);
-          aiResponse = `บันทึก "${pendingCommand?.title}" เรียบร้อยแล้วค่ะ ✅`;
+          aiResponse = successMsg('บันทึก', pendingCommand?.title || 'รายการ');
         }
 
         // Save AI response
@@ -264,7 +486,7 @@ export async function POST(request: NextRequest) {
         // Save user message (rejection)
         const { message: savedUserMessage } = await saveChatMessage(conversationId, 'user', message);
 
-        const aiResponse = `ยกเลิกแล้วค่ะ ❌ ถ้ามีอะไรให้ช่วย บอกได้เลยนะคะ 😊`;
+        const aiResponse = pick(REJECT_RESPONSES);
 
         // Save AI response
         const { message: savedAIMessage } = await saveChatMessage(conversationId, 'assistant', aiResponse);
@@ -277,33 +499,61 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // === Step 0.5: ตรวจจับว่าผู้ใช้ตอบตัวเลขเลือก clarify choice ===
+    let resolvedMessage = message;
+    const numberMatch = message.trim().match(/^(\d+)$/);
+    if (numberMatch) {
+      // ดึงข้อความล่าสุดของ assistant เพื่อดูว่าเป็น clarify choices หรือเปล่า
+      const { messages: recentMessages } = await getChatMessages(conversationId, 5);
+      const lastAssistantMsg = recentMessages
+        .filter(m => m.role === 'assistant')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+      if (lastAssistantMsg) {
+        // ตรวจจับ pattern "1. xxx\n2. xxx\n3. xxx" ในข้อความ assistant
+        const choiceMatches = lastAssistantMsg.content.match(/^\d+\.\s+(.+)$/gm);
+        if (choiceMatches && choiceMatches.length > 0) {
+          const choiceIndex = parseInt(numberMatch[1]) - 1;
+          if (choiceIndex >= 0 && choiceIndex < choiceMatches.length) {
+            // ดึงข้อความ choice ที่เลือก (เอาเฉพาะ text หลังเลข)
+            const selectedChoice = choiceMatches[choiceIndex].replace(/^\d+\.\s+/, '').trim();
+            console.log('[CHAT DEBUG] User selected clarify choice:', selectedChoice);
+            resolvedMessage = selectedChoice;
+          }
+        }
+      }
+    }
+
     // === Step 1: ใช้ AI วิเคราะห์ intent ของข้อความ ===
     let intent: AnalyzedIntent;
     try {
-      intent = await analyzeIntent(message);
+      intent = await analyzeIntent(resolvedMessage);
     } catch {
-      intent = { intent: 'chat', raw: message };
+      intent = { intent: 'chat', raw: resolvedMessage };
     }
 
     console.log('[CHAT DEBUG] message:', message);
     console.log('[CHAT DEBUG] intent before override:', intent.intent, 'date:', intent.date);
 
     // Safety net: override intent ถ้า keyword ชัดเจน แต่ Gemini detect ผิด
-    const { isQueryCommand: isQuery, isDeleteAllCommand: isDelete, isEditCommand: isEdit, isRoutineCommand: isRoutine } = await import('@/lib/ai/keyword-parser');
-    if (intent.intent !== 'create_routine' && isRoutine(message)) {
+    const { isQueryCommand: isQuery, isDeleteAllCommand: isDelete, isEditCommand: isEdit, isRoutineCommand: isRoutine, isMonthlyRoutineCommand: isMonthly } = await import('@/lib/ai/keyword-parser');
+    if (intent.intent !== 'create_monthly_routine' && isMonthly(resolvedMessage)) {
+      console.log('[CHAT DEBUG] Override to create_monthly_routine');
+      intent = { ...intent, intent: 'create_monthly_routine' };
+    } else if (intent.intent !== 'create_routine' && intent.intent !== 'create_monthly_routine' && isRoutine(resolvedMessage)) {
       console.log('[CHAT DEBUG] Override to create_routine');
       intent = { ...intent, intent: 'create_routine' };
-    } else if (intent.intent !== 'query' && isQuery(message)) {
+    } else if (intent.intent !== 'query' && isQuery(resolvedMessage)) {
       console.log('[CHAT DEBUG] Override to query');
       intent = { ...intent, intent: 'query' };
-      const pd = parseThaiDate(message);
+      const pd = parseThaiDate(resolvedMessage);
       if (pd.date && !intent.date) {
         intent.date = pd.date;
       }
-    } else if (intent.intent !== 'delete_all' && isDelete(message)) {
+    } else if (intent.intent !== 'delete_all' && isDelete(resolvedMessage)) {
       console.log('[CHAT DEBUG] Override to delete_all');
       intent = { ...intent, intent: 'delete_all' };
-    } else if (intent.intent !== 'edit_event' && isEdit(message)) {
+    } else if (intent.intent !== 'edit_event' && isEdit(resolvedMessage)) {
       console.log('[CHAT DEBUG] Override to edit_event');
       intent = { ...intent, intent: 'edit_event' };
     }
@@ -316,14 +566,16 @@ export async function POST(request: NextRequest) {
       executed: false,
     };
 
-    const isCommand = intent.intent === 'create_event' || intent.intent === 'create_task' || intent.intent === 'create_note' || intent.intent === 'create_routine' || intent.intent === 'delete_all' || intent.intent === 'edit_event';
+    const nonCommandIntents = ['query', 'chat', 'search', 'clarify'];
+    const isCommand = !nonCommandIntents.includes(intent.intent);
 
     if (isCommand) {
       userMetadata = {
         command: {
-          type: intent.intent as 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'delete_all' | 'edit_event',
-          title: intent.title || message.slice(0, 50),
+          type: intent.intent as any,
+          title: intent.title || resolvedMessage.slice(0, 50),
           date: intent.date,
+          day_of_month: intent.day_of_month,
           time: intent.time,
           description: intent.description,
           priority: intent.priority,
@@ -486,15 +738,15 @@ export async function POST(request: NextRequest) {
         }).join('\n');
 
         if (filterLabel) {
-          customQueryResponse = `${filterLabel} มี ${filtered.length} รายการค่ะ:\n\n${commandsList}`;
+          customQueryResponse = `${filterLabel} มี ${filtered.length} รายการนะ:\n\n${commandsList}`;
         } else {
-          customQueryResponse = `ตอนนี้มี ${filtered.length} รายการค่ะ:\n\n${commandsList}`;
+          customQueryResponse = `ตอนนี้มี ${filtered.length} รายการนะ:\n\n${commandsList}`;
         }
       } else {
         if (filterLabel) {
-          customQueryResponse = `${filterLabel} ไม่มีนัดหมายหรืองานอะไรค่ะ 😊`;
+          customQueryResponse = `${filterLabel} ไม่มีอะไรเลยนะ ว่างๆ 😊`;
         } else {
-          customQueryResponse = 'ตอนนี้ยังไม่มีนัดหมายหรืองานอะไรเลยค่ะ 😊';
+          customQueryResponse = 'ตอนนี้ยังไม่มีอะไรเลยนะ ว่างๆ 😊';
         }
       }
     }
@@ -531,7 +783,8 @@ export async function POST(request: NextRequest) {
         }
 
         if (matchedEvent) {
-          // เก็บ targetEventId ใน metadata
+          // เก็บ targetId ใน metadata
+          userMetadata.command!.targetId = matchedEvent.id;
           userMetadata.command!.targetEventId = matchedEvent.id;
 
           // อัปเดต metadata ที่ save ไปแล้ว
@@ -630,6 +883,115 @@ export async function POST(request: NextRequest) {
           `📅 วัน: ${daysLabel}\n` +
           `🔔 เตือนก่อน: ${remindMin} นาที\n\n` +
           `💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+      } else if (isCommand && intent.intent === 'create_monthly_routine') {
+        const dayOfMonth = intent.day_of_month || 1;
+        const dayLabel = dayOfMonth === 32 ? 'สิ้นเดือน' : `วันที่ ${dayOfMonth}`;
+        const timeStr = intent.routine_time || intent.time || '09:00';
+        const remindMin = intent.remind_before_minutes ?? 10;
+
+        aiResponse = `ยืนยันสร้างกิจวัตรรายเดือน "${intent.title}" ไหมคะ?\n\n` +
+          `📅 ทุก${dayLabel} ของเดือน\n` +
+          `⏰ เวลา: ${timeStr} น.\n` +
+          `🔔 เตือนก่อน: ${remindMin} นาที\n\n` +
+          `💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+      } else if (isCommand && (intent.intent === 'edit_task' || intent.intent === 'edit_note' || intent.intent === 'edit_routine' || intent.intent === 'edit_monthly_routine')) {
+        // Edit task/note/routine/monthly_routine → หารายการที่ match
+        const editTarget = intent.editTarget;
+        const keyword = editTarget?.titleKeyword?.toLowerCase() || '';
+        let matched: { id: string; title: string } | null = null;
+        let typeName = '';
+
+        if (intent.intent === 'edit_task') {
+          typeName = 'งาน';
+          const { tasks } = await getUserTasks();
+          matched = tasks?.find(t => t.title.toLowerCase().includes(keyword)) ? { id: tasks.find(t => t.title.toLowerCase().includes(keyword))!.id, title: tasks.find(t => t.title.toLowerCase().includes(keyword))!.title } : null;
+        } else if (intent.intent === 'edit_note') {
+          typeName = 'บันทึก';
+          const { notes } = await getUserNotes();
+          matched = notes?.find(n => n.title.toLowerCase().includes(keyword)) ? { id: notes.find(n => n.title.toLowerCase().includes(keyword))!.id, title: notes.find(n => n.title.toLowerCase().includes(keyword))!.title } : null;
+        } else if (intent.intent === 'edit_routine') {
+          typeName = 'กิจวัตร';
+          const { routines } = await getUserRoutines();
+          matched = routines?.find(r => r.title.toLowerCase().includes(keyword)) ? { id: routines.find(r => r.title.toLowerCase().includes(keyword))!.id, title: routines.find(r => r.title.toLowerCase().includes(keyword))!.title } : null;
+        } else if (intent.intent === 'edit_monthly_routine') {
+          typeName = 'กิจวัตรรายเดือน';
+          const { routines } = await getUserMonthlyRoutines();
+          matched = routines?.find(r => r.title.toLowerCase().includes(keyword)) ? { id: routines.find(r => r.title.toLowerCase().includes(keyword))!.id, title: routines.find(r => r.title.toLowerCase().includes(keyword))!.title } : null;
+        }
+
+        if (matched) {
+          userMetadata.command!.targetId = matched.id;
+          await supabase
+            .from('chat_messages')
+            .update({ metadata: userMetadata as unknown as Record<string, unknown> })
+            .eq('id', savedUserMessage.id);
+
+          const changeParts: string[] = [];
+          if (intent.title) changeParts.push(`ชื่อเป็น "${intent.title}"`);
+          if (intent.date) changeParts.push(`วันที่เป็น ${intent.date}`);
+          if (intent.time) changeParts.push(`เวลาเป็น ${intent.time} น.`);
+          if (intent.routine_time) changeParts.push(`เวลาเป็น ${intent.routine_time} น.`);
+          if (intent.day_of_month) changeParts.push(`วันที่ ${intent.day_of_month} ของเดือน`);
+          if (intent.description) changeParts.push(`รายละเอียดเป็น "${intent.description}"`);
+          const changeDesc = changeParts.length > 0 ? changeParts.join(', ') : '';
+
+          aiResponse = `ต้องการแก้ไข${typeName} "${matched.title}" → ${changeDesc} ใช่ไหมคะ?\n\n💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+        } else {
+          aiResponse = `ไม่พบ${typeName}ที่ชื่อ "${keyword}" ค่ะ 😊 ลองเช็คชื่ออีกครั้งนะคะ`;
+        }
+      } else if (isCommand && (intent.intent === 'delete_event' || intent.intent === 'delete_task' || intent.intent === 'delete_note' || intent.intent === 'delete_routine' || intent.intent === 'delete_monthly_routine')) {
+        // Delete specific item → หารายการที่ match
+        const editTarget = intent.editTarget;
+        const keyword = editTarget?.titleKeyword?.toLowerCase() || '';
+        let matched: { id: string; title: string } | null = null;
+        let typeName = '';
+
+        if (intent.intent === 'delete_event') {
+          typeName = 'นัดหมาย';
+          const { events } = await getUserEvents();
+          const found = events?.find(e => e.title.toLowerCase().includes(keyword));
+          if (found) matched = { id: found.id, title: found.title };
+        } else if (intent.intent === 'delete_task') {
+          typeName = 'งาน';
+          const { tasks } = await getUserTasks();
+          const found = tasks?.find(t => t.title.toLowerCase().includes(keyword));
+          if (found) matched = { id: found.id, title: found.title };
+        } else if (intent.intent === 'delete_note') {
+          typeName = 'บันทึก';
+          const { notes } = await getUserNotes();
+          const found = notes?.find(n => n.title.toLowerCase().includes(keyword));
+          if (found) matched = { id: found.id, title: found.title };
+        } else if (intent.intent === 'delete_routine') {
+          typeName = 'กิจวัตร';
+          const { routines } = await getUserRoutines();
+          const found = routines?.find(r => r.title.toLowerCase().includes(keyword));
+          if (found) matched = { id: found.id, title: found.title };
+        } else if (intent.intent === 'delete_monthly_routine') {
+          typeName = 'กิจวัตรรายเดือน';
+          const { routines } = await getUserMonthlyRoutines();
+          const found = routines?.find(r => r.title.toLowerCase().includes(keyword));
+          if (found) matched = { id: found.id, title: found.title };
+        }
+
+        if (matched) {
+          userMetadata.command!.targetId = matched.id;
+          userMetadata.command!.title = matched.title;
+          await supabase
+            .from('chat_messages')
+            .update({ metadata: userMetadata as unknown as Record<string, unknown> })
+            .eq('id', savedUserMessage.id);
+
+          aiResponse = `⚠️ ต้องการลบ${typeName} "${matched.title}" ใช่ไหมคะ?\n\nการลบจะย้อนกลับไม่ได้นะคะ\n\n💬 พิมพ์ "ใช่" เพื่อยืนยันลบ หรือ "ไม่" เพื่อยกเลิก`;
+        } else {
+          aiResponse = `ไม่พบ${typeName}ที่ชื่อ "${keyword}" ค่ะ 😊 ลองเช็คชื่ออีกครั้งนะคะ`;
+        }
+      } else if (intent.intent === 'clarify') {
+        // AI ไม่แน่ใจ → ส่ง choices ให้ user เลือก
+        let clarifyMsg = intent.clarifyMessage || 'ไม่แน่ใจว่าต้องการแบบไหนคะ เลือกได้เลย:';
+        if (intent.choices && intent.choices.length > 0) {
+          clarifyMsg += '\n\n' + intent.choices.map((c, i) => `${i + 1}. ${c}`).join('\n');
+        }
+        aiResponse = clarifyMsg;
       } else if (isCommand) {
         // Create command → ask for confirmation
         aiResponse = generateConfirmationPrompt(intent.intent, intent.title || message.slice(0, 50));
@@ -678,9 +1040,9 @@ export async function POST(request: NextRequest) {
       console.error('AI error details:', errMsg);
 
       if (errMsg === 'RATE_LIMIT') {
-        aiResponse = 'ตอนนี้มีคนใช้งานเยอะ รอสักครู่แล้วลองใหม่นะครับ ⏳';
+        aiResponse = 'ตอนนี้คนเยอะ รอแปบนึงแล้วลองใหม่นะ ⏳';
       } else {
-        aiResponse = 'ขอโทษครับ ตอนนี้ผมมีปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งนะครับ 🙏';
+        aiResponse = 'อุ๊ย มีปัญหานิดนึง ลองพิมพ์ใหม่อีกทีได้ไหม 🙏';
       }
     }
 

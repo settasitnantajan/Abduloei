@@ -4,7 +4,9 @@ import { getUserTasks, deleteTask } from '@/app/actions/tasks';
 import { CheckSquare, Clock, Calendar, MessageCircle, CheckCircle2, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import DeleteButton from '@/components/shared/DeleteButton';
+import EditButton from '@/components/shared/EditButton';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
+import { updateTask } from '@/app/actions/tasks';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -12,6 +14,11 @@ function getPriorityConfig(priority?: string) {
     case 'low': return { label: 'ไม่ด่วน', color: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400/30' };
     default: return { label: 'ปกติ', color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30' };
   }
+}
+
+async function editTask(id: string, data: Record<string, unknown>) {
+  'use server';
+  return updateTask(id, data as any);
 }
 
 export default async function TasksPage() {
@@ -86,6 +93,21 @@ export default async function TasksPage() {
                               <span className={`text-xs px-2 py-0.5 rounded-full ${priority.bg} ${priority.color} ${priority.border} border`}>
                                 {priority.label}
                               </span>
+                              <EditButton
+                                onEdit={editTask}
+                                itemId={task.id}
+                                itemName={task.title}
+                                accentColor="blue"
+                                fields={[
+                                  { key: 'title', label: 'ชื่องาน', type: 'text', value: task.title, required: true },
+                                  { key: 'due_date', label: 'วันกำหนดส่ง', type: 'date', value: task.due_date || '' },
+                                  { key: 'due_time', label: 'เวลา', type: 'time', value: task.due_time || '' },
+                                  { key: 'priority', label: 'ความสำคัญ', type: 'select', value: task.priority || 'medium', options: [
+                                    { label: 'ไม่ด่วน', value: 'low' }, { label: 'ปกติ', value: 'medium' }, { label: 'ด่วน', value: 'high' },
+                                  ]},
+                                  { key: 'description', label: 'คำอธิบาย', type: 'textarea', value: task.description || '' },
+                                ]}
+                              />
                               <DeleteButton onDelete={deleteTask} itemId={task.id} itemName={task.title} />
                             </div>
                             {task.description && (

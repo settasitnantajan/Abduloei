@@ -5,7 +5,13 @@ import { detectUserEmotion } from '@/lib/ai/context-utils';
 import { parseThaiDate } from '@/lib/utils/thai-date-parser';
 
 export interface AnalyzedIntent {
-  intent: 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'delete_all' | 'edit_event' | 'query' | 'chat' | 'search';
+  intent: 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'create_monthly_routine'
+    | 'edit_event' | 'edit_task' | 'edit_note' | 'edit_routine' | 'edit_monthly_routine'
+    | 'delete_all' | 'delete_event' | 'delete_task' | 'delete_note' | 'delete_routine' | 'delete_monthly_routine'
+    | 'query' | 'chat' | 'search' | 'clarify';
+  day_of_month?: number;
+  clarifyMessage?: string;  // ข้อความถามกลับเมื่อไม่แน่ใจ
+  choices?: string[];       // ตัวเลือกให้ user เลือก
   title?: string;
   description?: string;
   date?: string;       // YYYY-MM-DD
@@ -34,158 +40,173 @@ export interface AnalyzedIntent {
   raw: string;
 }
 
-const INTENT_PROMPT = `คุณคือ AI ที่วิเคราะห์ intent ของข้อความภาษาไทย ตอบเป็น JSON เท่านั้น ห้ามตอบอย่างอื่น
+const INTENT_PROMPT = `คุณคือ AI วิเคราะห์คำสั่งสำหรับแอป "Abduloei" — ผู้ช่วยจัดการชีวิตประจำวัน ตอบเป็น JSON เท่านั้น
 
 วันนี้คือ: {{TODAY}}
 
-ประเภท intent:
-- "create_event": สร้างนัดหมาย/กิจกรรม — ต้องมีเจตนาชัดเจน เช่น สร้างนัด, เพิ่มนัด, อย่าลืม, ต้องไป, นัดหมาย, จองคิว, นัดให้, set นัด, เตือนว่าต้อง
-- "create_task": สร้างงาน/to-do — ไม่มีวัน/เวลาชัดเจน เช่น ต้องซื้อ, จ่ายค่า, โทรหา, ส่งงาน, เพิ่มงาน, todo
-- "create_note": จดบันทึก — เช่น จำไว้, บันทึก, จดโน้ต, เมโม, save ว่า, จำด้วย, จดหน่อย
-- "create_routine": สร้างกิจวัตรประจำวัน/สัปดาห์ — ทำซ้ำเป็นประจำ เช่น ทานยาทุกวัน, ออกกำลังกายทุกเช้า, ให้อาหารแมวทุกวัน, เตือนทุกวัน, ประจำ, routine
-- "edit_event": แก้ไข/เปลี่ยนแปลงนัดหมายที่มีอยู่ เช่น แก้ไขนัด, เปลี่ยนนัด, อัปเดตนัด, เลื่อนนัด
-- "delete_all": ลบรายการ — ลบทั้งหมดหรือบางส่วน เช่น ลบนัด, ยกเลิกนัด, cancel, ไม่ไปแล้ว, เคลียร์
-- "query": ถามรายการ — เช่น มีนัดอะไรบ้าง, ดูนัด, ตารางวัน, ว่างไหม, เช็คนัด, to-do ที่ยังไม่เสร็จ, มีงานค้างอะไร
-- "search": ค้นหาข้อมูล — ราคา, ข่าว, สภาพอากาศ, ผลบอล, หุ้น, ทอง
-- "chat": สนทนาทั่วไป ทักทาย ระบายอารมณ์ เล่าเรื่องที่เกิดขึ้นแล้ว
+=== ระบบของ Abduloei มีฟีเจอร์เหล่านี้ ===
 
-กฎสำคัญ:
-1. เล่าเรื่องที่เกิดแล้ว + มีอารมณ์ → "chat" เสมอ แม้จะมีวัน/เวลา
-2. "วันนี้" + เล่าเรื่อง ≠ create_event
-3. "ลบ/ยกเลิก/cancel/ไม่ไปแล้ว" + ชื่อนัดหรือวัน → "delete_all" เสมอ
-4. "มีนัดไหม/ว่างไหม/ตารางวัน/ดูนัด" → "query" เสมอ
-5. ถ้ามี "สร้างนัด/นัดให้/เพิ่มนัด" → create_event เสมอ
-6. "แก้ไข/เปลี่ยน/อัปเดต/เลื่อน" + นัดที่มีอยู่ → "edit_event" เสมอ (ไม่ใช่ create_event!)
-7. "ทุกวัน/ทุกเช้า/ทุกคืน/ประจำ/routine/ทุก จ./ทุกสัปดาห์" → "create_routine" เสมอ (ไม่ใช่ create_event!)
-   - days_of_week: 0=อาทิตย์, 1=จันทร์, 2=อังคาร, 3=พุธ, 4=พฤหัส, 5=ศุกร์, 6=เสาร์
-   - "ทุกวัน" = [0,1,2,3,4,5,6]
-   - "วันจันทร์ พุธ ศุกร์" = [1,3,5]
-   - "วันธรรมดา/วันทำงาน" = [1,2,3,4,5]
-   - "วันหยุด/เสาร์อาทิตย์" = [0,6]
-   - routine_time = เวลาที่ต้องทำ (HH:mm)
-   - remind_before_minutes = เตือนก่อนกี่นาที (default 10)
-   - "editTarget" = นัดเดิมที่จะแก้ (date = วันที่เดิม, titleKeyword = ชื่อเดิม)
-   - "date" = วันที่ใหม่ที่ต้องการเปลี่ยนไป
-   - "title" = ชื่อใหม่ (ถ้าเปลี่ยน)
-   - "time" = เวลาใหม่ (ถ้าเปลี่ยน)
+1. "create_event" — สร้างนัดหมาย (ต้องมี: title, ควรมี: date, time, description, location)
+   keywords: สร้างนัด, เพิ่มนัด, นัดหมาย, อย่าลืม, ต้องไป, จองคิว
 
-ตอบ JSON format:
+2. "create_task" — สร้างงาน/to-do (ต้องมี: title, ถ้ามี: date, time = deadline)
+   keywords: เพิ่มงาน, สร้างงาน, todo, ต้องซื้อ, ต้องจ่าย, ต้องทำ, ต้องไปรับ
+
+3. "create_note" — จดบันทึก (ต้องมี: title + description)
+   keywords: จำไว้, บันทึก, จด, โน้ต, เมโม, save
+
+4. "create_routine" — กิจวัตรรายสัปดาห์ (ต้องมี: title, routine_time, days_of_week)
+   keywords: ทุกวัน, ทุกเช้า, ทุกคืน, routine, ประจำ, ทุกวันจันทร์
+   days_of_week: 0=อา, 1=จ, 2=อ, 3=พ, 4=พฤ, 5=ศ, 6=ส
+   "ทุกวัน"=[0,1,2,3,4,5,6], "วันทำงาน"=[1,2,3,4,5], "วันหยุด"=[0,6]
+
+5. "create_monthly_routine" — กิจวัตรรายเดือน (ต้องมี: title, routine_time, day_of_month)
+   keywords: ทุกเดือน, รายเดือน, ทุกวันที่, ของเดือน
+   day_of_month: 1-31, ใช้ 32 = สิ้นเดือน
+
+6. "edit_event" — แก้ไขนัดหมาย (ต้องมี: editTarget.titleKeyword + สิ่งที่จะแก้)
+   keywords: แก้ไขนัด, เปลี่ยนนัด, เลื่อนนัด, อัปเดตนัด
+
+7. "edit_task" — แก้ไขงาน/to-do (ต้องมี: editTarget.titleKeyword + สิ่งที่จะแก้)
+   keywords: แก้ไขงาน, เปลี่ยนงาน, อัปเดตงาน
+
+8. "edit_note" — แก้ไขบันทึก (ต้องมี: editTarget.titleKeyword + สิ่งที่จะแก้)
+   keywords: แก้ไขบันทึก, แก้โน้ต, อัปเดตบันทึก
+
+9. "edit_routine" — แก้ไขกิจวัตร (ต้องมี: editTarget.titleKeyword + สิ่งที่จะแก้)
+   keywords: แก้ไขกิจวัตร, เปลี่ยนกิจวัตร, แก้ routine
+
+10. "edit_monthly_routine" — แก้ไขกิจวัตรรายเดือน (ต้องมี: editTarget.titleKeyword + สิ่งที่จะแก้)
+   keywords: แก้ไขกิจวัตรรายเดือน, เปลี่ยนกิจวัตรรายเดือน
+
+11. "delete_event" — ลบนัดหมายเฉพาะรายการ (ต้องมี: editTarget.titleKeyword)
+    keywords: ลบนัด, ยกเลิกนัด, cancel นัด, ไม่ไปแล้ว
+    ⚠️ ใช้เมื่อลบเจาะจง เช่น "ลบนัดหมอ", "ยกเลิกนัดประชุม"
+
+12. "delete_task" — ลบงานเฉพาะรายการ (ต้องมี: editTarget.titleKeyword)
+    keywords: ลบงาน, ยกเลิกงาน
+
+13. "delete_note" — ลบบันทึกเฉพาะรายการ (ต้องมี: editTarget.titleKeyword)
+    keywords: ลบบันทึก, ลบโน้ต
+
+14. "delete_routine" — ลบกิจวัตร (ต้องมี: editTarget.titleKeyword)
+    keywords: ลบกิจวัตร, ยกเลิกกิจวัตร
+
+15. "delete_monthly_routine" — ลบกิจวัตรรายเดือน (ต้องมี: editTarget.titleKeyword)
+    keywords: ลบกิจวัตรรายเดือน
+
+16. "delete_all" — ลบรายการทั้งหมด (ใช้เมื่อลบหมด ไม่เจาะจง)
+    keywords: ลบทั้งหมด, เคลียร์, ล้างข้อมูล, ลบหมด
+
+17. "query" — ถามดูรายการ
+    keywords: มีนัดไหม, ว่างไหม, ดูนัด, มีงานอะไร, ตาราง
+
+18. "search" — ค้นหาข้อมูลบนอินเทอร์เน็ต
+    keywords: ราคา, ข่าว, อากาศ, หุ้น
+
+19. "chat" — แชททั่วไป ทักทาย เล่าเรื่อง ระบาย
+
+20. "clarify" — ไม่แน่ใจว่า user ต้องการอะไร → ส่ง choices ให้เลือก
+    ใช้เมื่อ: ข้อความกำกวม, อาจเป็นได้หลาย intent, ข้อมูลไม่ครบ
+
+=== กฎสำคัญ ===
+- ถ้าข้อความมี "ทุกเดือน/รายเดือน/ทุกวันที่/ของเดือน" → create_monthly_routine เสมอ (ไม่ใช่ create_routine!)
+- ถ้าข้อความมี "ทุกวัน/ทุกเช้า/ทุกคืน/routine" → create_routine เสมอ (ไม่ใช่ create_event!)
+- เล่าเรื่องอดีต + อารมณ์ → chat เสมอ
+- ถ้าไม่แน่ใจ intent → ใช้ "clarify" พร้อม choices
+- ถ้าเป็น command แต่ข้อมูลไม่ครบ → ใช้ "clarify" พร้อมถามข้อมูลที่ขาด
+- title ต้องกระชับ ไม่เอาคำสั่ง ("สร้างนัด", "ลบ") มาใส่
+- เวลาไทย: "บ่ายโมง"=13:00, "2ทุ่ม"=20:00, "เที่ยง"=12:00, "4ทุ่ม"=22:00
+- remind_before_minutes default = 10
+- ลบเจาะจง (เช่น "ลบนัดหมอ") → ใช้ delete_event/delete_task/etc. ไม่ใช่ delete_all
+- ลบหมดทั้งประเภท (เช่น "ลบนัดทั้งหมด") → ใช้ delete_all + deleteFilter.type
+- แก้ไข → editTarget.titleKeyword คือคำที่ใช้หารายการเดิม
+
+=== JSON format ===
 {
-  "intent": "create_event",
+  "intent": "...",
   "title": "ชื่อสั้นๆ",
-  "description": "รายละเอียด (ถ้ามี)",
+  "description": "รายละเอียด",
   "date": "YYYY-MM-DD",
   "time": "HH:mm",
+  "routine_time": "HH:mm",
+  "days_of_week": [0,1,2,3,4,5,6],
+  "day_of_month": 5,
+  "remind_before_minutes": 10,
   "priority": "medium",
-  "checklist_items": [{"title": "รายการ 1"}],
-  "deleteFilter": {"date": "YYYY-MM-DD", "type": "create_event", "titleKeyword": "keyword", "all": true},
-  "editTarget": {"date": "YYYY-MM-DD (วันที่เดิมของนัดที่จะแก้)", "titleKeyword": "ชื่อเดิมของนัด"},
-  "beforeDate": "YYYY-MM-DD (ใช้เมื่อถาม 'ก่อนวันที่ X')",
-  "afterDate": "YYYY-MM-DD (ใช้เมื่อถาม 'หลังวันที่ X')"
+  "deleteFilter": {"date":"...", "type":"...", "titleKeyword":"...", "all":true},
+  "editTarget": {"date":"...", "titleKeyword":"..."},
+  "searchQuery": "...",
+  "clarifyMessage": "ข้อความถามกลับ",
+  "choices": ["ตัวเลือก 1", "ตัวเลือก 2"]
 }
 
-=== ตัวอย่าง create_event (สร้างนัด) ===
-- "สร้างนัดวันศุกร์หน้าไปงานแต่งงาน" → {"intent":"create_event","title":"งานแต่งงาน","date":"{{NEXT_FRIDAY}}"}
-- "นัดหมอฟันวันที่ 25/4 บ่าย 2" → {"intent":"create_event","title":"หมอฟัน","date":"2026-04-25","time":"14:00"}
-- "อย่าลืมไปประชุมพรุ่งนี้ 10 โมง" → {"intent":"create_event","title":"ประชุม","date":"{{TOMORROW}}","time":"10:00"}
-- "จองคิวหมอวันที่ 5 เมษา บ่ายโมง" → {"intent":"create_event","title":"หมอ","date":"2026-04-05","time":"13:00"}
-- "นัดกินข้าววันเสาร์เที่ยง" → {"intent":"create_event","title":"กินข้าว","date":"...","time":"12:00"}
-- "เพิ่มนัดกินข้าวกับพี่แจ้ วันเสาร์เที่ยง" → {"intent":"create_event","title":"กินข้าวกับพี่แจ้","date":"...","time":"12:00"}
-- "มีนัดสัมภาษณ์งาน จ. หน้า บ่ายโมง" → {"intent":"create_event","title":"สัมภาษณ์งาน","date":"...","time":"13:00"}
-- "ตั้งนัดไปฟิตเนส วันนี้ 5 โมงเย็น" → {"intent":"create_event","title":"ฟิตเนส","date":"{{TODAY}}","time":"17:00"}
-- "สร้างนัดวันพุธหน้าไปดูหนังกับพี่ดุ๊กช่วง 3 ทุ่ม" → {"intent":"create_event","title":"ดูหนังกับพี่ดุ๊ก","date":"...","time":"21:00"}
-- "ต้องไปหาหมอวันศุกร์ตอนบ่าย 2 ครึ่ง" → {"intent":"create_event","title":"หาหมอ","date":"...","time":"14:30"}
-- "set นัด meeting วัน Friday 2 pm" → {"intent":"create_event","title":"meeting","date":"...","time":"14:00"}
+=== ตัวอย่าง (ประโยคเต็ม) ===
+"สร้างนัดไปหาหมอพรุ่งนี้ 10 โมง" → {"intent":"create_event","title":"หาหมอ","date":"{{TOMORROW}}","time":"10:00"}
+"จ่ายค่าบ้านทุกวันที่ 31 4 ทุ่ม เตือนก่อน 30 นาที" → {"intent":"create_monthly_routine","title":"จ่ายค่าบ้าน","routine_time":"22:00","day_of_month":31,"remind_before_minutes":30}
+"จ่ายค่าบ้านสิ้นเดือน 4 ทุ่ม" → {"intent":"create_monthly_routine","title":"จ่ายค่าบ้าน","routine_time":"22:00","day_of_month":32}
+"ต้องจ่ายค่าเน็ตทุกสิ้นเดือน" → {"intent":"create_monthly_routine","title":"จ่ายค่าเน็ต","day_of_month":32}
+"เตือนทานยาทุกวัน เที่ยง" → {"intent":"create_routine","title":"ทานยา","routine_time":"12:00","days_of_week":[0,1,2,3,4,5,6]}
+"ต้องจ่ายค่าเน็ต" → {"intent":"create_task","title":"จ่ายค่าเน็ต"}
+"จำไว้ว่ารหัส wifi คือ 12345" → {"intent":"create_note","title":"รหัส wifi","description":"12345"}
+"ลบนัดหมายทั้งหมด" → {"intent":"delete_all","deleteFilter":{"all":true,"type":"create_event"}}
+"มีนัดอะไรบ้าง" → {"intent":"query"}
+"สวัสดี" → {"intent":"chat"}
+"จ่ายค่าไฟ" → {"intent":"clarify","clarifyMessage":"ต้องการแบบไหนคะ?","choices":["สร้างงาน (to-do) จ่ายค่าไฟ","สร้างกิจวัตรรายเดือน จ่ายค่าไฟ","สร้างนัดหมาย จ่ายค่าไฟ"]}
+"บันทึกรายเดือนจ่ายค่าไฟวันที่ 5 เวลาเที่ยง เตือนก่อน 5 นาที" → {"intent":"create_monthly_routine","title":"จ่ายค่าไฟ","routine_time":"12:00","day_of_month":5,"remind_before_minutes":5}
+"แก้ไขนัดหมอเป็นวันศุกร์" → {"intent":"edit_event","editTarget":{"titleKeyword":"หมอ"},"date":"..."}
+"แก้ไขงานจ่ายค่าเน็ตเป็นพรุ่งนี้" → {"intent":"edit_task","editTarget":{"titleKeyword":"จ่ายค่าเน็ต"},"date":"{{TOMORROW}}"}
+"แก้บันทึกรหัส wifi เป็น 99999" → {"intent":"edit_note","editTarget":{"titleKeyword":"รหัส wifi"},"description":"99999"}
+"แก้กิจวัตรทานยาเป็น 2 ทุ่ม" → {"intent":"edit_routine","editTarget":{"titleKeyword":"ทานยา"},"routine_time":"20:00"}
+"แก้กิจวัตรรายเดือนจ่ายค่าบ้านเป็นวันที่ 25" → {"intent":"edit_monthly_routine","editTarget":{"titleKeyword":"จ่ายค่าบ้าน"},"day_of_month":25}
+"ลบนัดหมอ" → {"intent":"delete_event","editTarget":{"titleKeyword":"หมอ"}}
+"ลบงานจ่ายค่าเน็ต" → {"intent":"delete_task","editTarget":{"titleKeyword":"จ่ายค่าเน็ต"}}
+"ลบบันทึกรหัส wifi" → {"intent":"delete_note","editTarget":{"titleKeyword":"รหัส wifi"}}
+"ลบกิจวัตรทานยา" → {"intent":"delete_routine","editTarget":{"titleKeyword":"ทานยา"}}
+"ลบกิจวัตรรายเดือนจ่ายค่าบ้าน" → {"intent":"delete_monthly_routine","editTarget":{"titleKeyword":"จ่ายค่าบ้าน"}}
+"ยกเลิกนัดประชุม" → {"intent":"delete_event","editTarget":{"titleKeyword":"ประชุม"}}
+"ราคาทองวันนี้" → {"intent":"search","searchQuery":"ราคาทองวันนี้"}
+"เหนื่อยมากวันนี้" → {"intent":"chat"}
 
-=== ตัวอย่าง create_task (สร้างงาน) ===
-- "ต้องซื้อนมกับไข่ไก่" → {"intent":"create_task","title":"ซื้อนมกับไข่ไก่"}
-- "จ่ายค่าไฟ" → {"intent":"create_task","title":"จ่ายค่าไฟ"}
-- "โทรหาช่างแอร์" → {"intent":"create_task","title":"โทรหาช่างแอร์"}
-- "ส่งรายงานให้หัวหน้า" → {"intent":"create_task","title":"ส่งรายงานให้หัวหน้า"}
-- "todo ซื้อนมกลับบ้าน" → {"intent":"create_task","title":"ซื้อนมกลับบ้าน"}
-- "เพิ่มงาน ส่งรายงานภายในวันศุกร์" → {"intent":"create_task","title":"ส่งรายงาน","date":"..."}
-- "มีงานต้องทำ เตรียมสไลด์พรีเซนต์" → {"intent":"create_task","title":"เตรียมสไลด์พรีเซนต์"}
-- "ไปรับพัสดุที่ไปรษณีย์" → {"intent":"create_task","title":"รับพัสดุที่ไปรษณีย์"}
+=== ตัวอย่าง (ภาษาพูดห้วนๆ ไม่เป็นทางการ — สำคัญมาก ต้องเข้าใจด้วย) ===
+"หมอพรุ่งนี้ 10 โมง" → {"intent":"create_event","title":"หาหมอ","date":"{{TOMORROW}}","time":"10:00"}
+"นัดหมอ" → {"intent":"create_event","title":"หาหมอ"}
+"ไปหาหมอ" → {"intent":"create_event","title":"หาหมอ"}
+"ประชุม 3 ทุ่ม" → {"intent":"create_event","title":"ประชุม","time":"21:00"}
+"กินข้าวกับแม่เที่ยง" → {"intent":"create_event","title":"กินข้าวกับแม่","time":"12:00"}
+"พรุ่งนี้สอบ" → {"intent":"create_event","title":"สอบ","date":"{{TOMORROW}}"}
+"ซื้อน้ำตาล" → {"intent":"create_task","title":"ซื้อน้ำตาล"}
+"ต่อทะเบียน" → {"intent":"create_task","title":"ต่อทะเบียน"}
+"ไปรับลูก 4 โมง" → {"intent":"create_task","title":"ไปรับลูก","time":"16:00"}
+"อย่าลืมซักผ้า" → {"intent":"create_task","title":"ซักผ้า"}
+"จำไว้ เลขบัญชี 1234567890" → {"intent":"create_note","title":"เลขบัญชี","description":"1234567890"}
+"pass wifi = hello123" → {"intent":"create_note","title":"รหัส wifi","description":"hello123"}
+"กินยาทุกวัน" → {"intent":"create_routine","title":"กินยา","days_of_week":[0,1,2,3,4,5,6]}
+"วิ่งทุกเช้า 6 โมง" → {"intent":"create_routine","title":"วิ่ง","routine_time":"06:00","days_of_week":[0,1,2,3,4,5,6]}
+"ค่าเน็ตทุกเดือน" → {"intent":"create_monthly_routine","title":"จ่ายค่าเน็ต"}
+"ค่าบ้าน สิ้นเดือน" → {"intent":"create_monthly_routine","title":"จ่ายค่าบ้าน","day_of_month":32}
+"มีนัดไรบ้าง" → {"intent":"query"}
+"ว่างไหมพรุ่งนี้" → {"intent":"query","date":"{{TOMORROW}}"}
+"วันนี้ต้องทำไร" → {"intent":"query"}
+"ดูงาน" → {"intent":"query"}
+"ลบนัดหมอทิ้ง" → {"intent":"delete_event","editTarget":{"titleKeyword":"หมอ"}}
+"ไม่ไปหมอแล้ว" → {"intent":"delete_event","editTarget":{"titleKeyword":"หมอ"}}
+"เลื่อนนัดหมอเป็นศุกร์" → {"intent":"edit_event","editTarget":{"titleKeyword":"หมอ"},"date":"..."}
+"เปลี่ยนเวลาประชุมเป็นบ่าย 3" → {"intent":"edit_event","editTarget":{"titleKeyword":"ประชุม"},"time":"15:00"}
+"เบื่อจัง" → {"intent":"chat"}
+"555" → {"intent":"chat"}
+"ขอบคุณนะ" → {"intent":"chat"}
+"ทำไรดี" → {"intent":"chat"}
+"วันนี้เจอเพื่อนเก่ามา ดีใจมาก" → {"intent":"chat"}
 
-=== ตัวอย่าง create_note (จดบันทึก) ===
-- "จำไว้ว่ารหัส wifi คือ hello1234" → {"intent":"create_note","title":"รหัส wifi","description":"hello1234"}
-- "บันทึกเบอร์ช่างไฟ 081-xxx-xxxx" → {"intent":"create_note","title":"เบอร์ช่างไฟ","description":"081-xxx-xxxx"}
-- "จดไว้ว่าขนาดรองเท้าลูก 28" → {"intent":"create_note","title":"ขนาดรองเท้าลูก","description":"28"}
-- "เมโม เลขที่ออเดอร์ 12345" → {"intent":"create_note","title":"เลขที่ออเดอร์","description":"12345"}
-- "save ว่า password คือ abc123" → {"intent":"create_note","title":"password","description":"abc123"}
-- "จำด้วย ที่จอดรถชั้น 3 โซน B" → {"intent":"create_note","title":"ที่จอดรถ","description":"ชั้น 3 โซน B"}
-- "โน้ต สิ่งที่คุยกับลูกค้าวันนี้ เรื่องราคาใหม่" → {"intent":"create_note","title":"คุยกับลูกค้า","description":"เรื่องราคาใหม่"}
-- "ไว้ว่ารหัส wifi คือ 678" → {"intent":"create_note","title":"รหัส wifi","description":"678"}
+=== กฎพิเศษสำหรับข้อความสั้น/ไม่ชัด ===
+- ถ้าเห็นคำว่า "หมอ", "ทันต", "สอบ", "ประชุม", "สัมภาษณ์" + เวลา/วัน → create_event เลย ไม่ต้อง clarify
+- ถ้าเห็น "ซื้อ", "รับ", "ส่ง", "ต่อ" + สิ่งของ → create_task เลย
+- ถ้าเห็น "จำไว้", "pass", "รหัส", "เลขที่" → create_note เลย
+- ถ้าเห็น "ไม่ไป...แล้ว", "ยกเลิก", "เลิก" + keyword → delete เลย
+- ถ้าสั้นมาก (1-2 คำ) แต่ไม่มี keyword ชัด → ใช้ clarify ดีกว่าเดา
 
-=== ตัวอย่าง edit_event (แก้ไขนัด) ===
-- "แก้ไขนัดวันที่ 24 มีนาคม เปลี่ยนไปดูหนังกับน้องแอมวันที่ 25" → {"intent":"edit_event","editTarget":{"date":"2026-03-24"},"title":"ดูหนังกับน้องแอม","date":"2026-03-25"}
-- "เปลี่ยนนัดหมอฟันเป็นดูหนังกับน้องแอม" → {"intent":"edit_event","editTarget":{"titleKeyword":"หมอฟัน"},"title":"ดูหนังกับน้องแอม"}
-- "เลื่อนนัดวันที่ 20 ไปวันที่ 22" → {"intent":"edit_event","editTarget":{"date":"2026-03-20"},"date":"2026-03-22"}
-- "แก้ไขนัดประชุมวันจันทร์เป็นวันอังคาร" → {"intent":"edit_event","editTarget":{"titleKeyword":"ประชุม"},"date":"..."}
-- "อัปเดตนัดกินข้าววันที่ 25 เปลี่ยนเวลาเป็นบ่าย 3" → {"intent":"edit_event","editTarget":{"titleKeyword":"กินข้าว","date":"2026-03-25"},"time":"15:00"}
-- "เลื่อนนัดหมอฟันวันที่ 24 ไปวันที่ 26 บ่ายโมง" → {"intent":"edit_event","editTarget":{"titleKeyword":"หมอฟัน","date":"2026-03-24"},"date":"2026-03-26","time":"13:00"}
-
-=== ตัวอย่าง delete_all (ลบ) ===
-- "ลบนัดหมายทั้งหมด" → {"intent":"delete_all","deleteFilter":{"all":true}}
-- "ลบนัดหมายวันที่ 27/3 ทั้งหมด" → {"intent":"delete_all","deleteFilter":{"date":"2026-03-27","type":"create_event"}}
-- "ลบงานทั้งหมด" → {"intent":"delete_all","deleteFilter":{"type":"create_task","all":true}}
-- "ลบบันทึกทั้งหมด" → {"intent":"delete_all","deleteFilter":{"type":"create_note","all":true}}
-- "เคลียร์ทุกอย่าง" → {"intent":"delete_all","deleteFilter":{"all":true}}
-- "ลบนัดงานแต่งงาน" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"งานแต่งงาน"}}
-- "ลบนัดหมอฟัน" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"หมอฟัน","type":"create_event"}}
-- "ลบนัดประชุมวันที่ 20/3" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"ประชุม","date":"2026-03-20"}}
-- "ลบบันทึกรหัส wifi" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"wifi","type":"create_note"}}
-- "ยกเลิกนัดประชุมวันศุกร์" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"ประชุม","date":"..."}}
-- "cancel นัดพรุ่งนี้" → {"intent":"delete_all","deleteFilter":{"date":"{{TOMORROW}}"}}
-- "ไม่ไปนัดวันพุธแล้ว" → {"intent":"delete_all","deleteFilter":{"date":"..."}}
-- "ไม่ไปหมอแล้ว" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"หมอ"}}
-- "ลบรายการซื้อของ" → {"intent":"delete_all","deleteFilter":{"titleKeyword":"ซื้อของ"}}
-
-=== ตัวอย่าง query (ถามรายการ) ===
-- "มีนัดอะไรบ้าง" → {"intent":"query"}
-- "มีนัดอะไรบ้างพรุ่งนี้" → {"intent":"query","date":"{{TOMORROW}}"}
-- "มีนัดอะไรบ้างวันที่ 27 เดือน 3" → {"intent":"query","date":"2026-03-27"}
-- "วันนี้มีอะไรบ้าง" → {"intent":"query","date":"{{TODAY}}"}
-- "ดูนัดวันจันทร์" → {"intent":"query","date":"..."}
-- "พรุ่งนี้ว่างไหม" → {"intent":"query","date":"{{TOMORROW}}"}
-- "ตารางวันพรุ่งนี้เป็นยังไง" → {"intent":"query","date":"{{TOMORROW}}"}
-- "เช็คนัดวันที่ 15" → {"intent":"query","date":"..."}
-- "มีงานค้างอะไรบ้าง" → {"intent":"query"}
-- "to-do ที่ยังไม่เสร็จ" → {"intent":"query"}
-- "อาทิตย์หน้ามีนัดไหม" → {"intent":"query"}
-- "พรุ่งว่างมะ" → {"intent":"query","date":"{{TOMORROW}}"}
-- "มีนัดมั้ย" → {"intent":"query"}
-- "ก่อนวันที่ 20 มีนัดไหม" → {"intent":"query","beforeDate":"2026-03-20"}
-- "หลังวันที่ 25 มีอะไรบ้าง" → {"intent":"query","afterDate":"2026-03-25"}
-- "มีนัดก่อนหน้านี้ไหม ก่อนวันที่ 20" → {"intent":"query","beforeDate":"2026-03-20"}
-
-=== ตัวอย่าง create_routine (กิจวัตร) ===
-- "เตือนทานยาทุกวัน 12:00" → {"intent":"create_routine","title":"ทานยา","routine_time":"12:00","days_of_week":[0,1,2,3,4,5,6],"remind_before_minutes":10}
-- "ออกกำลังกาย 6 โมงเช้าทุกวัน" → {"intent":"create_routine","title":"ออกกำลังกาย","routine_time":"06:00","days_of_week":[0,1,2,3,4,5,6]}
-- "ให้อาหารแมวทุกเช้า 7 โมง เตือนก่อน 15 นาที" → {"intent":"create_routine","title":"ให้อาหารแมว","routine_time":"07:00","days_of_week":[0,1,2,3,4,5,6],"remind_before_minutes":15}
-- "เตือนออกกำลังกายทุกวันจันทร์ พุธ ศุกร์ ตอน 5 โมงเย็น" → {"intent":"create_routine","title":"ออกกำลังกาย","routine_time":"17:00","days_of_week":[1,3,5]}
-- "routine ทานวิตามิน ทุกเช้า 8 โมง" → {"intent":"create_routine","title":"ทานวิตามิน","routine_time":"08:00","days_of_week":[0,1,2,3,4,5,6]}
-- "เตือนรดน้ำต้นไม้ทุกวัน เย็น 5 โมง" → {"intent":"create_routine","title":"รดน้ำต้นไม้","routine_time":"17:00","days_of_week":[0,1,2,3,4,5,6]}
-- "ต้องทานยาลดความดันทุกวัน ตอนเที่ยง" → {"intent":"create_routine","title":"ทานยาลดความดัน","routine_time":"12:00","days_of_week":[0,1,2,3,4,5,6]}
-- "ล้างจานทุกคืน 2 ทุ่ม" → {"intent":"create_routine","title":"ล้างจาน","routine_time":"20:00","days_of_week":[0,1,2,3,4,5,6]}
-- "เตือนประชุมทีมทุกวันจันทร์ 10 โมง" → {"intent":"create_routine","title":"ประชุมทีม","routine_time":"10:00","days_of_week":[1]}
-- "พาหมาเดินเล่นทุกเช้าเย็น 6 โมง" → {"intent":"create_routine","title":"พาหมาเดินเล่น","routine_time":"06:00","days_of_week":[0,1,2,3,4,5,6]}
-- "ฝึกภาษาอังกฤษวันทำงาน 8 โมง" → {"intent":"create_routine","title":"ฝึกภาษาอังกฤษ","routine_time":"08:00","days_of_week":[1,2,3,4,5]}
-
-=== ตัวอย่าง search (ค้นหา) ===
-- "ราคาทองวันนี้" → {"intent":"search","searchQuery":"ราคาทองวันนี้"}
-- "อากาศพรุ่งนี้" → {"intent":"search","searchQuery":"สภาพอากาศพรุ่งนี้"}
-
-=== ตัวอย่าง chat (สนทนา) ===
-- "สวัสดี สบายดีไหม" → {"intent":"chat"}
-- "เครียดมากเลย งานเยอะไม่รู้จะจัดการยังไงดี" → {"intent":"chat"}
-- "น้องซีเกมส์หล่อมากวันนี้เจอที่ห้าง" → {"intent":"chat"} (เล่าเรื่อง)
-- "วันนี้ไปเดินห้างมา เหนื่อยมาก" → {"intent":"chat"} (เล่าเรื่อง)
-
-สำคัญ:
-- title ต้องกระชับ ไม่เอาคำว่า "สร้างนัด", "ให้หน่อย", "ลบ" มาใส่ใน title
-- ถ้ามีวัน/เวลาให้คำนวณวันที่จริงจากวันนี้
-- ตอบเฉพาะ JSON เท่านั้น ห้ามมี text อื่น`;
+ตอบเฉพาะ JSON เท่านั้น ห้ามมี text อื่น`;
 
 /**
  * ใช้ Gemini วิเคราะห์ intent ของข้อความ
@@ -279,6 +300,9 @@ export async function analyzeIntent(message: string): Promise<AnalyzedIntent> {
       routine_time: parsed.routine_time,
       days_of_week: parsed.days_of_week,
       remind_before_minutes: parsed.remind_before_minutes,
+      day_of_month: parsed.day_of_month,
+      clarifyMessage: parsed.clarifyMessage,
+      choices: parsed.choices,
       raw: message,
     };
   } catch (error) {

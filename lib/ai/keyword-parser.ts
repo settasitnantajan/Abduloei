@@ -118,7 +118,18 @@ function hasExplicitCreateCommand(text: string): boolean {
  * ปรับ logic: แยก narration (เล่าเรื่อง) กับ command (สั่งสร้างนัด)
  */
 function detectCommandType(text: string): CommandType | null {
-  // === Priority 0: กิจวัตร (ทุกวัน/ทุกเช้า/routine) ===
+  // === Priority 0A: กิจวัตรรายเดือน (ทุกเดือน/ทุกๆวันที่/รายเดือน/สิ้นเดือน) ===
+  const monthlyKeywords = [
+    'ทุกเดือน', 'ทุกๆเดือน', 'รายเดือน', 'ทุกๆวันที่', 'ทุกวันที่',
+    'ของเดือน', 'ประจำเดือน', 'สิ้นเดือน', 'ทุกสิ้นเดือน',
+  ]
+  for (const keyword of monthlyKeywords) {
+    if (text.includes(keyword)) {
+      return 'create_monthly_routine' as CommandType
+    }
+  }
+
+  // === Priority 0B: กิจวัตร (ทุกวัน/ทุกเช้า/routine) ===
   const routineKeywords = [
     'ทุกวัน', 'ทุกเช้า', 'ทุกคืน', 'ทุกเย็น', 'ประจำวัน',
     'ทุกวันจันทร์', 'ทุกวันอังคาร', 'ทุกวันพุธ', 'ทุกวันพฤหัส', 'ทุกวันศุกร์', 'ทุกวันเสาร์', 'ทุกวันอาทิตย์',
@@ -403,13 +414,23 @@ function extractDescription(text: string): string | undefined {
  * สร้างข้อความตอบกลับจาก ParsedCommand (สำหรับ AI)
  */
 export function formatCommandResponse(command: ParsedCommand): string {
-  const typeMap: Record<CommandType, string> = {
+  const typeMap: Record<string, string> = {
     create_event: 'นัดหมาย',
     create_task: 'งาน',
     create_note: 'บันทึก',
     create_routine: 'กิจวัตร',
+    create_monthly_routine: 'กิจวัตรรายเดือน',
+    edit_event: 'แก้ไขนัดหมาย',
+    edit_task: 'แก้ไขงาน',
+    edit_note: 'แก้ไขบันทึก',
+    edit_routine: 'แก้ไขกิจวัตร',
+    edit_monthly_routine: 'แก้ไขกิจวัตรรายเดือน',
     delete_all: 'ลบทั้งหมด',
-    edit_event: 'แก้ไขนัดหมาย'
+    delete_event: 'ลบนัดหมาย',
+    delete_task: 'ลบงาน',
+    delete_note: 'ลบบันทึก',
+    delete_routine: 'ลบกิจวัตร',
+    delete_monthly_routine: 'ลบกิจวัตรรายเดือน',
   }
 
   const typeName = typeMap[command.type]
@@ -572,6 +593,18 @@ function extractAssignee(text: string): { title: string; assignee?: string } {
 /**
  * ตรวจสอบว่าเป็นคำสั่งแก้ไขนัดหมายหรือไม่
  */
+export function isMonthlyRoutineCommand(text: string): boolean {
+  const normalized = text.toLowerCase()
+  const monthlyKeywords = [
+    'ทุกเดือน', 'ทุกๆเดือน', 'รายเดือน', 'ทุกๆวันที่', 'ทุกวันที่',
+    'ของเดือน', 'ประจำเดือน', 'สิ้นเดือน', 'ทุกสิ้นเดือน',
+  ]
+  for (const keyword of monthlyKeywords) {
+    if (normalized.includes(keyword)) return true
+  }
+  return false
+}
+
 export function isRoutineCommand(text: string): boolean {
   const normalized = text.toLowerCase()
   const routineKeywords = [

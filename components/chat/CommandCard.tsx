@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ParsedCommand } from '@/lib/types/command'
 import { formatThaiDate } from '@/lib/utils/thai-date-parser'
-import { CalendarIcon, CheckCircle2Icon, ClockIcon, AlertCircleIcon, StickyNoteIcon, UserIcon, ListChecksIcon, Check, X } from 'lucide-react'
+import { CalendarIcon, CheckCircle2Icon, ClockIcon, AlertCircleIcon, StickyNoteIcon, UserIcon, ListChecksIcon, Check, X, Trash2Icon, PencilIcon, RepeatIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { motion } from 'framer-motion'
@@ -49,49 +49,71 @@ export default function CommandCard({
       setIsCanceling(false)
     }
   }
-  const typeConfig = {
+  const typeConfig: Record<string, { icon: typeof CalendarIcon; label: string; bgColor: string; borderColor: string; iconColor: string }> = {
     create_event: {
-      icon: CalendarIcon,
-      label: 'นัดหมาย',
-      bgColor: 'bg-[#00B900]/10',
-      borderColor: 'border-[#00B900]/30',
-      iconColor: 'text-[#00B900]'
+      icon: CalendarIcon, label: 'นัดหมาย',
+      bgColor: 'bg-[#00B900]/10', borderColor: 'border-[#00B900]/30', iconColor: 'text-[#00B900]'
     },
     create_task: {
-      icon: CheckCircle2Icon,
-      label: 'งานที่ต้องทำ',
-      bgColor: 'bg-blue-500/10',
-      borderColor: 'border-blue-500/30',
-      iconColor: 'text-blue-500'
+      icon: CheckCircle2Icon, label: 'งานที่ต้องทำ',
+      bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30', iconColor: 'text-blue-500'
     },
     create_note: {
-      icon: StickyNoteIcon,
-      label: 'บันทึก',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'border-amber-500/30',
-      iconColor: 'text-amber-500'
-    },
-    delete_all: {
-      icon: CheckCircle2Icon,
-      label: 'ลบทั้งหมด',
-      bgColor: 'bg-red-500/10',
-      borderColor: 'border-red-500/30',
-      iconColor: 'text-red-500'
-    },
-    edit_event: {
-      icon: CalendarIcon,
-      label: 'แก้ไขนัดหมาย',
-      bgColor: 'bg-orange-500/10',
-      borderColor: 'border-orange-500/30',
-      iconColor: 'text-orange-500'
+      icon: StickyNoteIcon, label: 'บันทึก',
+      bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500/30', iconColor: 'text-amber-500'
     },
     create_routine: {
-      icon: CalendarIcon,
-      label: 'กิจวัตรประจำวัน',
-      bgColor: 'bg-purple-500/10',
-      borderColor: 'border-purple-500/30',
-      iconColor: 'text-purple-500'
-    }
+      icon: RepeatIcon, label: 'กิจวัตรประจำวัน',
+      bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/30', iconColor: 'text-purple-500'
+    },
+    create_monthly_routine: {
+      icon: RepeatIcon, label: 'กิจวัตรรายเดือน',
+      bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500/30', iconColor: 'text-pink-500'
+    },
+    edit_event: {
+      icon: PencilIcon, label: 'แก้ไขนัดหมาย',
+      bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', iconColor: 'text-orange-500'
+    },
+    edit_task: {
+      icon: PencilIcon, label: 'แก้ไขงาน',
+      bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', iconColor: 'text-orange-500'
+    },
+    edit_note: {
+      icon: PencilIcon, label: 'แก้ไขบันทึก',
+      bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', iconColor: 'text-orange-500'
+    },
+    edit_routine: {
+      icon: PencilIcon, label: 'แก้ไขกิจวัตร',
+      bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', iconColor: 'text-orange-500'
+    },
+    edit_monthly_routine: {
+      icon: PencilIcon, label: 'แก้ไขกิจวัตรรายเดือน',
+      bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', iconColor: 'text-orange-500'
+    },
+    delete_all: {
+      icon: Trash2Icon, label: 'ลบทั้งหมด',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
+    delete_event: {
+      icon: Trash2Icon, label: 'ลบนัดหมาย',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
+    delete_task: {
+      icon: Trash2Icon, label: 'ลบงาน',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
+    delete_note: {
+      icon: Trash2Icon, label: 'ลบบันทึก',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
+    delete_routine: {
+      icon: Trash2Icon, label: 'ลบกิจวัตร',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
+    delete_monthly_routine: {
+      icon: Trash2Icon, label: 'ลบกิจวัตรรายเดือน',
+      bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', iconColor: 'text-red-500'
+    },
   }
 
   const config = typeConfig[command.type] || typeConfig.create_event
@@ -120,7 +142,7 @@ export default function CommandCard({
             {executed && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
                 <CheckCircle2Icon className="w-3 h-3" />
-                {command.type === 'delete_all' ? 'ลบแล้ว' : 'สร้างแล้ว'}
+                {command.type.startsWith('delete') ? 'ลบแล้ว' : command.type.startsWith('edit') ? 'แก้ไขแล้ว' : 'สร้างแล้ว'}
               </span>
             )}
             {pending && !executed && (
@@ -202,8 +224,10 @@ export default function CommandCard({
             onClick={handleConfirm}
             disabled={isConfirming || isCanceling}
             className={`flex-1 h-12 text-white font-semibold ${
-              command.type === 'delete_all'
+              command.type.startsWith('delete')
                 ? 'bg-red-600 hover:bg-red-700'
+                : command.type.startsWith('edit')
+                ? 'bg-orange-600 hover:bg-orange-700'
                 : 'bg-[#00B900] hover:bg-[#00A000]'
             }`}
           >
@@ -214,12 +238,12 @@ export default function CommandCard({
                   transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                   className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
                 />
-                {command.type === 'delete_all' ? 'กำลังลบ...' : 'กำลังสร้าง...'}
+                {command.type.startsWith('delete') ? 'กำลังลบ...' : command.type.startsWith('edit') ? 'กำลังแก้ไข...' : 'กำลังสร้าง...'}
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <Check className="w-5 h-5" />
-                {command.type === 'delete_all' ? 'ยืนยันลบ' : 'ยืนยันสร้าง'}
+                {command.type.startsWith('delete') ? 'ยืนยันลบ' : command.type.startsWith('edit') ? 'ยืนยันแก้ไข' : 'ยืนยันสร้าง'}
               </span>
             )}
           </Button>

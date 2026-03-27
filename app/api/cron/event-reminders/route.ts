@@ -241,12 +241,17 @@ export async function GET(request: Request) {
 
       // --- เตือนกิจวัตรรายเดือน (Monthly Routines) ---
       const todayDom = bangkokNow.getDate()
+      // เช็คว่าวันนี้เป็นวันสุดท้ายของเดือนไหม
+      const lastDayOfMonth = new Date(bangkokNow.getFullYear(), bangkokNow.getMonth() + 1, 0).getDate()
+      const isLastDay = todayDom === lastDayOfMonth
+      // ดึง routine ที่ตรงวันที่ + ถ้าวันนี้เป็นวันสุดท้าย ดึง day_of_month=32 (สิ้นเดือน) ด้วย
+      const matchDays = isLastDay ? [todayDom, 32] : [todayDom]
 
       let monthlyQuery = adminClient
         .from('monthly_routines')
         .select('id, user_id, title, description, routine_time, day_of_month, remind_before_minutes, last_reminded_date')
         .eq('is_active', true)
-        .eq('day_of_month', todayDom)
+        .in('day_of_month', matchDays)
 
       if (userFilter) monthlyQuery = monthlyQuery.eq('user_id', userId)
 

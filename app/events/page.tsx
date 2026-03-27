@@ -4,7 +4,9 @@ import { getUserEvents, deleteEvent } from '@/app/actions/events';
 import { Calendar, Clock, MessageCircle, CheckCircle2, Circle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import DeleteButton from '@/components/shared/DeleteButton';
+import EditButton, { EditField } from '@/components/shared/EditButton';
 import CreateEventModal from '@/components/events/CreateEventModal';
+import { updateEvent } from '@/app/actions/events';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -27,6 +29,17 @@ function getStatusInfo(event: any) {
   if (diffDays === 0) return { label: 'วันนี้', color: 'text-[#00B900]' };
   if (diffDays === 1) return { label: 'พรุ่งนี้', color: 'text-yellow-400' };
   return { label: `อีก ${diffDays} วัน`, color: 'text-gray-300' };
+}
+
+async function editEvent(id: string, data: Record<string, unknown>) {
+  'use server';
+  const mapped: Record<string, unknown> = {};
+  if (data.title) mapped.title = data.title;
+  if (data.event_date) mapped.event_date = data.event_date;
+  if (data.event_time) mapped.event_time = data.event_time;
+  if (data.description !== undefined) mapped.description = data.description;
+  if (data.priority) mapped.priority = data.priority;
+  return updateEvent(id, mapped);
 }
 
 export default async function EventsPage() {
@@ -94,6 +107,21 @@ export default async function EventsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-lg font-semibold text-white">{event.title}</h3>
+                          <EditButton
+                            onEdit={editEvent}
+                            itemId={event.id}
+                            itemName={event.title}
+                            accentColor="green"
+                            fields={[
+                              { key: 'title', label: 'ชื่อนัดหมาย', type: 'text', value: event.title, required: true },
+                              { key: 'event_date', label: 'วันที่', type: 'date', value: event.event_date || '' },
+                              { key: 'event_time', label: 'เวลา', type: 'time', value: event.event_time || '' },
+                              { key: 'priority', label: 'ความสำคัญ', type: 'select', value: event.priority || 'medium', options: [
+                                { label: 'ไม่ด่วน', value: 'low' }, { label: 'ปกติ', value: 'medium' }, { label: 'ด่วน', value: 'high' },
+                              ]},
+                              { key: 'description', label: 'รายละเอียด', type: 'textarea', value: event.description || '' },
+                            ]}
+                          />
                           <DeleteButton onDelete={deleteEvent} itemId={event.id} itemName={event.title} />
                           <span className={`text-xs px-2 py-0.5 rounded-full ${priority.bg} ${priority.color} ${priority.border} border`}>
                             {priority.label}

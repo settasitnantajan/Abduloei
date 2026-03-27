@@ -84,6 +84,28 @@ export async function getUserRoutines(): Promise<{ routines: Routine[]; error?: 
   }
 }
 
+export async function updateRoutine(
+  routineId: string,
+  data: Partial<Pick<Routine, 'title' | 'description' | 'routine_time' | 'days_of_week' | 'remind_before_minutes'>>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    const { error } = await supabase
+      .from('routines')
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq('id', routineId)
+      .eq('user_id', user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch {
+    return { success: false, error: 'เกิดข้อผิดพลาดในการแก้ไขกิจวัตร' };
+  }
+}
+
 export async function toggleRoutine(
   routineId: string,
   isActive: boolean

@@ -4,7 +4,14 @@ import { getUserNotes, deleteNote } from '@/app/actions/notes';
 import { StickyNote, MessageCircle, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import DeleteButton from '@/components/shared/DeleteButton';
+import EditButton from '@/components/shared/EditButton';
 import CreateNoteModal from '@/components/notes/CreateNoteModal';
+import { updateNote } from '@/app/actions/notes';
+
+async function editNote(id: string, data: Record<string, unknown>) {
+  'use server';
+  return updateNote(id, data as any);
+}
 
 export default async function NotesPage() {
   const supabase = await createClient();
@@ -67,6 +74,17 @@ export default async function NotesPage() {
                         {note.category}
                       </span>
                     )}
+                    <EditButton
+                      onEdit={editNote}
+                      itemId={note.id}
+                      itemName={note.title}
+                      accentColor="amber"
+                      fields={[
+                        { key: 'title', label: 'ชื่อบันทึก', type: 'text', value: note.title, required: true },
+                        { key: 'content', label: 'เนื้อหา', type: 'textarea', value: note.content || '' },
+                        { key: 'category', label: 'หมวดหมู่', type: 'text', value: note.category || '', placeholder: 'เช่น งาน, ส่วนตัว' },
+                      ]}
+                    />
                     <DeleteButton onDelete={deleteNote} itemId={note.id} itemName={note.title} />
                   </div>
                 </div>

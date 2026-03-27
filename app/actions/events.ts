@@ -22,6 +22,10 @@ export async function deleteEvent(eventId: string) {
   return eventsDb.deleteEvent(eventId)
 }
 
+export async function updateEvent(eventId: string, data: Record<string, unknown>) {
+  return eventsDb.updateEvent(eventId, data as any)
+}
+
 /**
  * อัพเดท Checklist Item (toggle completed, แก้ title, หรือ assignee)
  */

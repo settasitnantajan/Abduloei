@@ -18,3 +18,7 @@ export async function toggleRoutine(routineId: string, isActive: boolean) {
 export async function deleteRoutine(routineId: string) {
   return routinesDb.deleteRoutine(routineId)
 }
+
+export async function updateRoutine(routineId: string, data: Record<string, unknown>) {
+  return routinesDb.updateRoutine(routineId, data as any)
+}

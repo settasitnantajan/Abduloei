@@ -29,10 +29,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard, path: '/dashboard' },
+  { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
   { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events', badgeColor: 'bg-[#00B900]' },
   { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks', badgeColor: 'bg-blue-500' },
   { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
-  { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
   { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
   { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
   { id: 'settings', label: 'ตั้งค่า', icon: Settings, path: '/settings' },
@@ -76,7 +76,7 @@ export default function BottomNav() {
   }, [pathname]);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#1A1A1A] border-t border-[#333333] md:hidden pb-safe">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#1A1A1A] border-t border-[#333333] md:hidden pb-safe">
       <div
         ref={scrollRef}
         className="flex items-center h-16 overflow-x-auto scrollbar-hide"

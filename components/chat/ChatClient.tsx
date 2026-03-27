@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Trash2 } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Trash2, Volume2, VolumeX } from 'lucide-react';
 
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
@@ -18,12 +18,32 @@ interface ChatClientProps {
   initialHasMore: boolean;
 }
 
+function speakThai(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const clean = text
+    .replace(/[\u{1F600}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, '')
+    .replace(/[✅❌⚠️🔔📅⏰💬🎉💭💡•🙏😊😂🤔❤️👋🥰😅😢😤😎🫡]/g, '')
+    .replace(/\n+/g, ' ')
+    .trim();
+  if (!clean) return;
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.lang = 'th-TH';
+  utterance.rate = 1.05;
+  utterance.pitch = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const thaiVoice = voices.find(v => v.lang.startsWith('th'));
+  if (thaiVoice) utterance.voice = thaiVoice;
+  window.speechSynthesis.speak(utterance);
+}
+
 export default function ChatClient({ initialConversation, initialMessages, initialHasMore }: ChatClientProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const [messages, setMessages] = useState<ChatMessageType[]>(initialMessages);
   const [isTyping, setIsTyping] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -219,6 +239,11 @@ export default function ChatClient({ initialConversation, initialMessages, initi
         data.userMessage,
         data.aiMessage,
       ]);
+
+      // TTS: อ่านข้อความ AI ออกเสียงอัตโนมัติ
+      if (ttsEnabled && data.aiMessage?.content) {
+        speakThai(data.aiMessage.content);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       // ลบ optimistic message ออกเมื่อ error
@@ -365,6 +390,13 @@ export default function ChatClient({ initialConversation, initialMessages, initi
       {/* Top-right buttons (fixed) */}
       {!isSearchOpen && (
         <div className="fixed top-4 right-4 md:right-8 z-20 flex items-center gap-2">
+          <button
+            onClick={() => { setTtsEnabled(prev => !prev); window.speechSynthesis?.cancel(); }}
+            className={`p-2.5 rounded-xl bg-[#1A1A1A] border transition-colors ${ttsEnabled ? 'border-[#00B900]/50 text-[#00B900]' : 'border-[#333333] text-gray-400 hover:text-white'}`}
+            title={ttsEnabled ? 'ปิดเสียง' : 'เปิดเสียง'}
+          >
+            {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
           <button
             onClick={() => setShowClearConfirm(true)}
             className="p-2.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-gray-400 hover:text-red-400 hover:border-red-500/30 transition-colors"

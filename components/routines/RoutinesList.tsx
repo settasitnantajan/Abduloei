@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Repeat, Plus, Clock, Trash2, Bell, X, Loader2 } from 'lucide-react';
+import { Repeat, Plus, Clock, Trash2, Bell, X, Loader2, Pencil } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { createRoutine, toggleRoutine, deleteRoutine } from '@/app/actions/routines';
+import { createRoutine, toggleRoutine, deleteRoutine, updateRoutine } from '@/app/actions/routines';
 import type { Routine } from '@/lib/db/routines';
 import type { CreateRoutineInput } from '@/lib/db/routines';
 
@@ -100,7 +100,7 @@ function CreateRoutineModal({ onClose, onCreated }: CreateModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md bg-[#1A1A1A] border border-[#333333] rounded-2xl shadow-2xl">
+      <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-[#1A1A1A] border border-[#333333] rounded-2xl shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[#2A2A2A]">
           <div className="flex items-center gap-2">
@@ -118,7 +118,7 @@ function CreateRoutineModal({ onClose, onCreated }: CreateModalProps) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 pb-20 sm:pb-5 space-y-4">
           {/* ชื่อ */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-300">
@@ -252,6 +252,12 @@ interface RoutineCardProps {
 function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
   const [isToggling, startToggleTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [isEditing, setIsEditing] = useState(false);
+  const [isEditPending, startEditTransition] = useTransition();
+  const [editTitle, setEditTitle] = useState(routine.title);
+  const [editTime, setEditTime] = useState(routine.routine_time?.slice(0, 5) || '09:00');
+  const [editDays, setEditDays] = useState<number[]>(routine.days_of_week || [0,1,2,3,4,5,6]);
+  const [editRemind, setEditRemind] = useState(routine.remind_before_minutes ?? 10);
 
   const handleToggle = () => {
     startToggleTransition(async () => {
@@ -266,6 +272,31 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
       await deleteRoutine(routine.id);
       onRefresh();
     });
+  };
+
+  const handleEditOpen = () => {
+    setEditTitle(routine.title);
+    setEditTime(routine.routine_time?.slice(0, 5) || '09:00');
+    setEditDays(routine.days_of_week || [0,1,2,3,4,5,6]);
+    setEditRemind(routine.remind_before_minutes ?? 10);
+    setIsEditing(true);
+  };
+
+  const handleEditSave = () => {
+    startEditTransition(async () => {
+      await updateRoutine(routine.id, {
+        title: editTitle,
+        routine_time: editTime,
+        days_of_week: editDays,
+        remind_before_minutes: editRemind,
+      });
+      setIsEditing(false);
+      onRefresh();
+    });
+  };
+
+  const toggleDay = (d: number) => {
+    setEditDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
   };
 
   return (
@@ -317,6 +348,15 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
               className="data-checked:bg-purple-600 data-unchecked:bg-[#444444]"
             />
 
+            {/* Edit */}
+            <button
+              onClick={handleEditOpen}
+              title="แก้ไขกิจวัตร"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-orange-400 hover:bg-orange-400/10 transition-colors"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+
             {/* Delete */}
             <button
               onClick={handleDelete}
@@ -363,6 +403,44 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
           routine.is_active ? 'bg-purple-600/60' : 'bg-transparent'
         }`}
       />
+
+      {/* Edit Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-[#333333]">
+              <h2 className="text-lg font-semibold text-white">แก้ไขกิจวัตร</h2>
+              <button onClick={() => setIsEditing(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 pb-20 sm:pb-4 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">ชื่อกิจวัตร</label>
+                <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">เวลา</label>
+                <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">วัน</label>
+                <div className="flex gap-1.5">
+                  {DAY_LABELS.map((label, i) => (
+                    <button key={i} type="button" onClick={() => toggleDay(i)} className={`w-9 h-9 rounded-full text-xs font-medium border transition-colors ${editDays.includes(i) ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-[#2A2A2A] text-gray-600 border-[#333333]'}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">เตือนก่อน (นาที)</label>
+                <input type="number" value={editRemind} onChange={e => setEditRemind(Number(e.target.value))} min={0} max={120} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
+              </div>
+              <button onClick={handleEditSave} disabled={isEditPending || !editTitle.trim()} className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2.5 font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                {isEditPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {isEditPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,10 @@
  * Thai Language Command Parsing System
  */
 
-export type CommandType = 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'delete_all' | 'edit_event'
+export type CommandType =
+  | 'create_event' | 'create_task' | 'create_note' | 'create_routine' | 'create_monthly_routine'
+  | 'edit_event' | 'edit_task' | 'edit_note' | 'edit_routine' | 'edit_monthly_routine'
+  | 'delete_all' | 'delete_event' | 'delete_task' | 'delete_note' | 'delete_routine' | 'delete_monthly_routine'
 
 export type Priority = 'low' | 'medium' | 'high'
 
@@ -24,6 +27,8 @@ export interface ParsedCommand {
   routine_time?: string        // HH:mm
   days_of_week?: number[]      // 0=อาทิตย์ ... 6=เสาร์
   remind_before_minutes?: number
+  // สำหรับ create_monthly_routine
+  day_of_month?: number        // 1-31 (32 = สิ้นเดือน)
   deleteFilter?: {
     date?: string
     type?: 'create_event' | 'create_task' | 'create_note' | 'create_routine'
@@ -35,6 +40,7 @@ export interface ParsedCommand {
     date?: string // วันที่เดิมของนัดที่จะแก้ไข (YYYY-MM-DD)
   }
   targetEventId?: string // ID ของ event ที่จะแก้ไข (ใส่ตอน confirm)
+  targetId?: string // ID ของรายการที่จะแก้ไข/ลบ (ใช้ร่วมกันทุกประเภท)
   raw: string // Original user message
 }
 

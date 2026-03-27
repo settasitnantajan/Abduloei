@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, Plus, Clock, Trash2, Bell, X, Loader2 } from 'lucide-react';
+import { CalendarDays, Plus, Clock, Trash2, Bell, X, Loader2, Pencil } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { createMonthlyRoutine, toggleMonthlyRoutine, deleteMonthlyRoutine } from '@/app/actions/monthly-routines';
+import { createMonthlyRoutine, toggleMonthlyRoutine, deleteMonthlyRoutine, updateMonthlyRoutine } from '@/app/actions/monthly-routines';
 import type { MonthlyRoutine, CreateMonthlyRoutineInput } from '@/lib/db/monthly-routines';
 
 function formatTime(time: string) {
@@ -48,7 +48,7 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-[#1A1A1A] border border-[#333333] rounded-2xl shadow-2xl">
+      <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-[#1A1A1A] border border-[#333333] rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between p-5 border-b border-[#2A2A2A]">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
@@ -61,7 +61,7 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 pb-20 sm:pb-5 space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-300">ชื่อ <span className="text-red-400">*</span></label>
             <input name="title" type="text" placeholder="เช่น จ่ายค่าบ้าน" className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white placeholder:text-gray-500 text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors" required />
@@ -79,6 +79,7 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
                 {Array.from({ length: 31 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>วันที่ {i + 1}</option>
                 ))}
+                <option value="32">สิ้นเดือน</option>
               </select>
             </div>
             <div className="space-y-1.5">
@@ -118,6 +119,12 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
 function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; onRefresh: () => void }) {
   const [isToggling, startToggleTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [isEditing, setIsEditing] = useState(false);
+  const [isEditPending, startEditTransition] = useTransition();
+  const [editTitle, setEditTitle] = useState(routine.title);
+  const [editTime, setEditTime] = useState(routine.routine_time?.slice(0, 5) || '09:00');
+  const [editDay, setEditDay] = useState(routine.day_of_month || 1);
+  const [editRemind, setEditRemind] = useState(routine.remind_before_minutes ?? 10);
 
   const handleToggle = () => {
     startToggleTransition(async () => {
@@ -130,6 +137,27 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
     if (!confirm(`ลบ "${routine.title}" ใช่ไหม?`)) return;
     startDeleteTransition(async () => {
       await deleteMonthlyRoutine(routine.id);
+      onRefresh();
+    });
+  };
+
+  const handleEditOpen = () => {
+    setEditTitle(routine.title);
+    setEditTime(routine.routine_time?.slice(0, 5) || '09:00');
+    setEditDay(routine.day_of_month || 1);
+    setEditRemind(routine.remind_before_minutes ?? 10);
+    setIsEditing(true);
+  };
+
+  const handleEditSave = () => {
+    startEditTransition(async () => {
+      await updateMonthlyRoutine(routine.id, {
+        title: editTitle,
+        routine_time: editTime,
+        day_of_month: editDay,
+        remind_before_minutes: editRemind,
+      });
+      setIsEditing(false);
       onRefresh();
     });
   };
@@ -149,6 +177,9 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <Switch checked={routine.is_active} onCheckedChange={handleToggle} disabled={isToggling || isDeleting} className="data-checked:bg-pink-600 data-unchecked:bg-[#444444]" />
+            <button onClick={handleEditOpen} title="แก้ไข" className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-orange-400 hover:bg-orange-400/10 transition-colors">
+              <Pencil className="w-4 h-4" />
+            </button>
             <button onClick={handleDelete} disabled={isDeleting || isToggling} title="ลบ" className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40">
               {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             </button>
@@ -157,7 +188,7 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
         <div className="space-y-2 pl-12">
           <div className="flex items-center gap-1.5 text-xs">
             <CalendarDays className={`w-3.5 h-3.5 ${routine.is_active ? 'text-pink-400' : 'text-gray-500'}`} />
-            <span className={routine.is_active ? 'text-gray-200' : 'text-gray-500'}>ทุกวันที่ {routine.day_of_month}</span>
+            <span className={routine.is_active ? 'text-gray-200' : 'text-gray-500'}>{routine.day_of_month === 32 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${routine.day_of_month}`}</span>
             <span className="text-gray-600 mx-0.5">·</span>
             <Clock className={`w-3.5 h-3.5 ${routine.is_active ? 'text-pink-400' : 'text-gray-500'}`} />
             <span className={routine.is_active ? 'text-gray-200' : 'text-gray-500'}>{formatTime(routine.routine_time)}</span>
@@ -172,6 +203,47 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
         </div>
       </div>
       <div className={`h-0.5 transition-colors ${routine.is_active ? 'bg-pink-600/60' : 'bg-transparent'}`} />
+
+      {/* Edit Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-[#333333]">
+              <h2 className="text-lg font-semibold text-white">แก้ไขกิจวัตรรายเดือน</h2>
+              <button onClick={() => setIsEditing(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 pb-20 sm:pb-4 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">ชื่อ</label>
+                <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">ทุกวันที่</label>
+                  <select value={editDay} onChange={e => setEditDay(Number(e.target.value))} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500">
+                    {Array.from({ length: 31 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>วันที่ {i + 1}</option>
+                    ))}
+                    <option value="32">สิ้นเดือน</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">เวลา</label>
+                  <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">เตือนก่อน (นาที)</label>
+                <input type="number" value={editRemind} onChange={e => setEditRemind(Number(e.target.value))} min={0} max={120} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
+              </div>
+              <button onClick={handleEditSave} disabled={isEditPending || !editTitle.trim()} className="w-full bg-pink-600 hover:bg-pink-500 text-white rounded-lg py-2.5 font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                {isEditPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {isEditPending ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

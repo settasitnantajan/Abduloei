@@ -84,6 +84,47 @@ export async function getUserMonthlyRoutines(): Promise<{ routines: MonthlyRouti
   }
 }
 
+export async function updateMonthlyRoutine(
+  routineId: string,
+  data: Partial<Pick<MonthlyRoutine, 'title' | 'description' | 'routine_time' | 'day_of_month' | 'remind_before_minutes'>>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    const { error } = await supabase
+      .from('monthly_routines')
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq('id', routineId)
+      .eq('user_id', user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch {
+    return { success: false, error: 'เกิดข้อผิดพลาดในการแก้ไขกิจวัตรรายเดือน' };
+  }
+}
+
+export async function deleteAllMonthlyRoutines(): Promise<{ success: boolean; count: number }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, count: 0 };
+
+    const { data, error } = await supabase
+      .from('monthly_routines')
+      .delete()
+      .eq('user_id', user.id)
+      .select('id');
+
+    if (error) return { success: false, count: 0 };
+    return { success: true, count: data?.length || 0 };
+  } catch {
+    return { success: false, count: 0 };
+  }
+}
+
 export async function toggleMonthlyRoutine(
   routineId: string,
   isActive: boolean

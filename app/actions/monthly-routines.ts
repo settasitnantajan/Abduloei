@@ -18,3 +18,7 @@ export async function toggleMonthlyRoutine(routineId: string, isActive: boolean)
 export async function deleteMonthlyRoutine(routineId: string) {
   return db.deleteMonthlyRoutine(routineId)
 }
+
+export async function updateMonthlyRoutine(routineId: string, data: Record<string, unknown>) {
+  return db.updateMonthlyRoutine(routineId, data as any)
+}
