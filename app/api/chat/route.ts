@@ -289,11 +289,13 @@ export async function POST(request: NextRequest) {
     console.log('[CHAT DEBUG] intent before override:', intent.intent, 'date:', intent.date);
 
     // Safety net: override intent ถ้า keyword ชัดเจน แต่ Gemini detect ผิด
-    const { isQueryCommand: isQuery, isDeleteAllCommand: isDelete, isEditCommand: isEdit } = await import('@/lib/ai/keyword-parser');
-    if (intent.intent !== 'query' && isQuery(message)) {
+    const { isQueryCommand: isQuery, isDeleteAllCommand: isDelete, isEditCommand: isEdit, isRoutineCommand: isRoutine } = await import('@/lib/ai/keyword-parser');
+    if (intent.intent !== 'create_routine' && isRoutine(message)) {
+      console.log('[CHAT DEBUG] Override to create_routine');
+      intent = { ...intent, intent: 'create_routine' };
+    } else if (intent.intent !== 'query' && isQuery(message)) {
       console.log('[CHAT DEBUG] Override to query');
       intent = { ...intent, intent: 'query' };
-      // parse date จากข้อความด้วย
       const pd = parseThaiDate(message);
       if (pd.date && !intent.date) {
         intent.date = pd.date;

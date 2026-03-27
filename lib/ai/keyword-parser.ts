@@ -118,6 +118,20 @@ function hasExplicitCreateCommand(text: string): boolean {
  * ปรับ logic: แยก narration (เล่าเรื่อง) กับ command (สั่งสร้างนัด)
  */
 function detectCommandType(text: string): CommandType | null {
+  // === Priority 0: กิจวัตร (ทุกวัน/ทุกเช้า/routine) ===
+  const routineKeywords = [
+    'ทุกวัน', 'ทุกเช้า', 'ทุกคืน', 'ทุกเย็น', 'ประจำวัน',
+    'ทุกวันจันทร์', 'ทุกวันอังคาร', 'ทุกวันพุธ', 'ทุกวันพฤหัส', 'ทุกวันศุกร์', 'ทุกวันเสาร์', 'ทุกวันอาทิตย์',
+    'ทุก จ.', 'ทุก อ.', 'ทุก พ.', 'ทุก พฤ.', 'ทุก ศ.', 'ทุก ส.', 'ทุก อา.',
+    'routine', 'กิจวัตร', 'วันทำงาน', 'วันหยุด',
+    'เตือนทุก', 'ทำทุก',
+  ]
+  for (const keyword of routineKeywords) {
+    if (text.includes(keyword)) {
+      return 'create_routine'
+    }
+  }
+
   const hasDateOrTime = hasDateTime(text)
 
   // === Priority 1: ถ้ามีวันที่/เวลา → ตรวจสอบเพิ่มเติม ===
@@ -558,6 +572,21 @@ function extractAssignee(text: string): { title: string; assignee?: string } {
 /**
  * ตรวจสอบว่าเป็นคำสั่งแก้ไขนัดหมายหรือไม่
  */
+export function isRoutineCommand(text: string): boolean {
+  const normalized = text.toLowerCase()
+  const routineKeywords = [
+    'ทุกวัน', 'ทุกเช้า', 'ทุกคืน', 'ทุกเย็น', 'ประจำวัน',
+    'ทุกวันจันทร์', 'ทุกวันอังคาร', 'ทุกวันพุธ', 'ทุกวันพฤหัส', 'ทุกวันศุกร์', 'ทุกวันเสาร์', 'ทุกวันอาทิตย์',
+    'ทุก จ.', 'ทุก อ.', 'ทุก พ.', 'ทุก พฤ.', 'ทุก ศ.', 'ทุก ส.', 'ทุก อา.',
+    'routine', 'กิจวัตร', 'วันทำงาน', 'วันหยุด',
+    'เตือนทุก', 'ทำทุก',
+  ]
+  for (const keyword of routineKeywords) {
+    if (normalized.includes(keyword)) return true
+  }
+  return false
+}
+
 export function isEditCommand(text: string): boolean {
   const normalized = text.toLowerCase()
   const editKeywords = [
