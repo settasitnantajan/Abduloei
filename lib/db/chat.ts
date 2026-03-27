@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { adminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 
 export interface ChatMessage {
@@ -501,9 +502,7 @@ export async function clearChatMessages(
   conversationId: string
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const supabase = await createClient();
-
-    const { error } = await supabase
+    const { error } = await adminClient
       .from('chat_messages')
       .delete()
       .eq('conversation_id', conversationId);
