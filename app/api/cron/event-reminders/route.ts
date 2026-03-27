@@ -177,9 +177,9 @@ export async function GET(request: Request) {
 }
 
 function buildEventDate(eventDate: string, eventTime: string | null): Date | null {
-  const dateStr = eventTime
-    ? `${eventDate}T${eventTime}:00+07:00`
-    : `${eventDate}T09:00:00+07:00`
+  // eventTime อาจเป็น "12:40", "12:40:00" หรือ null — ใช้แค่ HH:MM
+  const time = eventTime ? eventTime.slice(0, 5) : '09:00'
+  const dateStr = `${eventDate}T${time}:00+07:00`
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) {
     console.error(`[CRON] Invalid date: ${dateStr}`)
