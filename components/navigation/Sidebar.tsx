@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -18,21 +19,27 @@ import {
 import HomeSelector from '@/components/homes/HomeSelector';
 import { Separator } from '@/components/ui/separator';
 import NotificationBell from '@/components/notifications/NotificationBell';
+import { getUserEvents } from '@/app/actions/events';
+import { getUserTasks } from '@/app/actions/tasks';
+import { getUserNotes } from '@/app/actions/notes';
+import { getUserRoutines } from '@/app/actions/routines';
+import { getUserMonthlyRoutines } from '@/app/actions/monthly-routines';
 
 interface NavItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   path: string;
+  badgeColor?: string;
 }
 
 const mainNavItems: NavItem[] = [
   { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard, path: '/dashboard' },
-  { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events' },
-  { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks' },
-  { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes' },
-  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines' },
-  { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines' },
+  { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events', badgeColor: 'bg-[#00B900]' },
+  { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks', badgeColor: 'bg-blue-500' },
+  { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
+  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
+  { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
   { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
 ];
 
@@ -49,6 +56,27 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    async function fetchCounts() {
+      const [events, tasks, notes, routines, monthlyRoutines] = await Promise.all([
+        getUserEvents(),
+        getUserTasks(),
+        getUserNotes(),
+        getUserRoutines(),
+        getUserMonthlyRoutines(),
+      ]);
+      setCounts({
+        events: events.events?.length || 0,
+        tasks: tasks.tasks?.filter(t => t.status === 'pending').length || 0,
+        notes: notes.notes?.length || 0,
+        routines: routines.routines?.filter(r => r.is_active).length || 0,
+        'monthly-routines': monthlyRoutines.routines?.filter(r => r.is_active).length || 0,
+      });
+    }
+    fetchCounts();
+  }, [pathname]);
 
   const handleNavClick = (path: string) => {
     router.push(path);
@@ -57,12 +85,13 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const renderNavItem = (item: NavItem) => {
     const isActive = pathname === item.path;
     const Icon = item.icon;
+    const count = counts[item.id];
 
     return (
       <button
         key={item.id}
         onClick={() => handleNavClick(item.path)}
-        className={`relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} w-full ${collapsed ? 'px-2' : 'px-4'} py-3 rounded-lg transition-all ${
+        className={`relative flex items-center ${collapsed ? 'justify-center' : ''} w-full ${collapsed ? 'px-2' : 'px-3'} py-2.5 rounded-lg transition-all ${
           isActive
             ? 'bg-[#00B900]/10 text-white'
             : 'text-gray-400 hover:text-white hover:bg-[#2A2A2A]'
@@ -80,7 +109,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           />
         )}
 
-        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+        <div className="shrink-0 w-8 h-8 flex items-center justify-center">
           <Icon
             className={`w-5 h-5 transition-colors ${isActive ? 'text-[#00B900]' : ''}`}
             strokeWidth={isActive ? 2.5 : 2}
@@ -88,8 +117,22 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
 
         {!collapsed && (
-          <span className={`text-sm whitespace-nowrap ${isActive ? 'font-semibold' : 'font-normal'}`}>
-            {item.label}
+          <>
+            <span className={`text-sm whitespace-nowrap ml-2 ${isActive ? 'font-semibold' : 'font-normal'}`}>
+              {item.label}
+            </span>
+            <span className="flex-1" />
+            {count !== undefined && count > 0 && item.badgeColor && (
+              <span className={`flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold text-white ${item.badgeColor} rounded-full`}>
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
+          </>
+        )}
+
+        {collapsed && count !== undefined && count > 0 && item.badgeColor && (
+          <span className={`absolute -top-0.5 right-0.5 flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold text-white ${item.badgeColor} rounded-full`}>
+            {count > 99 ? '99+' : count}
           </span>
         )}
       </button>

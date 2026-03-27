@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -13,22 +13,28 @@ import {
   CalendarDays,
   Settings,
 } from 'lucide-react';
+import { getUserEvents } from '@/app/actions/events';
+import { getUserTasks } from '@/app/actions/tasks';
+import { getUserNotes } from '@/app/actions/notes';
+import { getUserRoutines } from '@/app/actions/routines';
+import { getUserMonthlyRoutines } from '@/app/actions/monthly-routines';
 
 interface NavItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   path: string;
+  badgeColor?: string;
 }
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard, path: '/dashboard' },
-  { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events' },
-  { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks' },
-  { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes' },
+  { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events', badgeColor: 'bg-[#00B900]' },
+  { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks', badgeColor: 'bg-blue-500' },
+  { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
   { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
-  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines' },
-  { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines' },
+  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
+  { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
   { id: 'settings', label: 'ตั้งค่า', icon: Settings, path: '/settings' },
 ];
 
@@ -36,6 +42,27 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    async function fetchCounts() {
+      const [events, tasks, notes, routines, monthlyRoutines] = await Promise.all([
+        getUserEvents(),
+        getUserTasks(),
+        getUserNotes(),
+        getUserRoutines(),
+        getUserMonthlyRoutines(),
+      ]);
+      setCounts({
+        events: events.events?.length || 0,
+        tasks: tasks.tasks?.filter(t => t.status === 'pending').length || 0,
+        notes: notes.notes?.length || 0,
+        routines: routines.routines?.filter(r => r.is_active).length || 0,
+        'monthly-routines': monthlyRoutines.routines?.filter(r => r.is_active).length || 0,
+      });
+    }
+    fetchCounts();
+  }, [pathname]);
 
   // เลื่อนไปหา active item อัตโนมัติ
   useEffect(() => {
@@ -57,6 +84,7 @@ export default function BottomNav() {
         {navItems.map((item) => {
           const isActive = pathname === item.path;
           const Icon = item.icon;
+          const count = counts[item.id];
 
           return (
             <button
@@ -76,11 +104,16 @@ export default function BottomNav() {
                 />
               )}
 
-              <div className="flex items-center justify-center h-9 w-9">
+              <div className="relative flex items-center justify-center h-9 w-9">
                 <Icon
                   className={`h-5 w-5 transition-colors ${isActive ? 'text-[#00B900]' : 'text-gray-400'}`}
                   strokeWidth={isActive ? 2.5 : 2}
                 />
+                {count !== undefined && count > 0 && item.badgeColor && (
+                  <span className={`absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold text-white ${item.badgeColor} rounded-full`}>
+                    {count > 99 ? '99+' : count}
+                  </span>
+                )}
               </div>
 
               <span
