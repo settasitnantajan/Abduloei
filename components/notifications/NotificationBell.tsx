@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bell, Check, CheckCheck, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { getUnreadCount, getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications'
+import { getUnreadCount, getNotifications, markAsRead, markAllAsRead, clearNotifications } from '@/app/actions/notifications'
+import { Trash2 } from 'lucide-react'
 
 interface Notification {
   id: string
@@ -71,6 +72,15 @@ export default function NotificationBell() {
     setUnreadCount(0)
   }
 
+  const handleClearAll = async () => {
+    if (!confirm('ล้างแจ้งเตือนทั้งหมด?')) return
+    const result = await clearNotifications()
+    if (result.success) {
+      setNotifications([])
+      setUnreadCount(0)
+    }
+  }
+
   return (
     <div className="relative">
       <button
@@ -112,6 +122,7 @@ export default function NotificationBell() {
                 unreadCount={unreadCount}
                 onMarkAsRead={handleMarkAsRead}
                 onMarkAllAsRead={handleMarkAllAsRead}
+                onClearAll={handleClearAll}
               />
             </motion.div>
 
@@ -143,6 +154,7 @@ export default function NotificationBell() {
                 unreadCount={unreadCount}
                 onMarkAsRead={handleMarkAsRead}
                 onMarkAllAsRead={handleMarkAllAsRead}
+                onClearAll={handleClearAll}
                 hideHeader
               />
             </motion.div>
@@ -159,6 +171,7 @@ function NotificationContent({
   unreadCount,
   onMarkAsRead,
   onMarkAllAsRead,
+  onClearAll,
   hideHeader = false,
 }: {
   notifications: Notification[]
@@ -166,6 +179,7 @@ function NotificationContent({
   unreadCount: number
   onMarkAsRead: (id: string) => void
   onMarkAllAsRead: () => void
+  onClearAll: () => void
   hideHeader?: boolean
 }) {
   return (
@@ -174,6 +188,32 @@ function NotificationContent({
       {!hideHeader && (
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#333333]">
           <h3 className="text-sm font-semibold text-white">แจ้งเตือน</h3>
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={onMarkAllAsRead}
+                className="flex items-center gap-1 text-xs text-[#00B900] hover:text-[#00D900] transition-colors"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                อ่านทั้งหมด
+              </button>
+            )}
+            {notifications.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                ล้าง
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Actions (mobile, inside sheet) */}
+      {hideHeader && (notifications.length > 0 || unreadCount > 0) && (
+        <div className="flex justify-end gap-2 px-4 pb-2">
           {unreadCount > 0 && (
             <button
               onClick={onMarkAllAsRead}
@@ -183,19 +223,15 @@ function NotificationContent({
               อ่านทั้งหมด
             </button>
           )}
-        </div>
-      )}
-
-      {/* Mark all as read (mobile, inside sheet) */}
-      {hideHeader && unreadCount > 0 && (
-        <div className="flex justify-end px-4 pb-2">
-          <button
-            onClick={onMarkAllAsRead}
-            className="flex items-center gap-1 text-xs text-[#00B900] hover:text-[#00D900] transition-colors"
-          >
-            <CheckCheck className="w-3.5 h-3.5" />
-            อ่านทั้งหมด
-          </button>
+          {notifications.length > 0 && (
+            <button
+              onClick={onClearAll}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="w-3 h-3" />
+              ล้าง
+            </button>
+          )}
         </div>
       )}
 

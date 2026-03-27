@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { adminClient } from '@/lib/supabase/admin'
 
 export async function getUnreadCount() {
   const supabase = await createClient()
@@ -70,6 +71,23 @@ export async function markAllAsRead() {
 
   if (error) {
     console.error('[Notifications] markAllAsRead error:', error)
+    return { success: false }
+  }
+  return { success: true }
+}
+
+export async function clearNotifications() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false }
+
+  const { error } = await adminClient
+    .from('notifications')
+    .delete()
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error('[Notifications] clearNotifications error:', error)
     return { success: false }
   }
   return { success: true }
