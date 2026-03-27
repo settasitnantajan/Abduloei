@@ -202,6 +202,42 @@ export async function sendEventReminderToLine(
   return sendTextMessage(lineUserId, message)
 }
 
+const monthlyRoutineNotifiedUsers = new Set<string>()
+
+export function resetMonthlyRoutineTracking() {
+  monthlyRoutineNotifiedUsers.clear()
+}
+
+export async function sendMonthlyRoutineReminderToLine(
+  lineUserId: string,
+  routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; day_of_month: number; remind_before_minutes: number }
+) {
+  const timeStr = routine.routine_time?.slice(0, 5) || ''
+  let message = `📅 เตือนกิจวัตรรายเดือน\n`
+  message += '━━━━━━━━━━━━━━━\n'
+  message += `📌 ${routine.title}\n`
+  if (routine.description) message += `${routine.description}\n`
+  message += `📅 ทุกวันที่ ${routine.day_of_month} ของเดือน\n`
+  message += `⏰ เวลา: ${timeStr} น.\n`
+  message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
+
+  const key = `${routine.user_id}:${routine.id}`
+  if (routine.user_id && !monthlyRoutineNotifiedUsers.has(key)) {
+    monthlyRoutineNotifiedUsers.add(key)
+    const webMsg = routine.description
+      ? `ทุกวันที่ ${routine.day_of_month} เวลา ${timeStr} น. — ${routine.description}`
+      : `ทุกวันที่ ${routine.day_of_month} เวลา ${timeStr} น.`
+    await saveWebNotification(
+      routine.user_id,
+      `📅 ${routine.title}`,
+      webMsg,
+      'monthly_routine_reminder'
+    )
+  }
+
+  return sendTextMessage(lineUserId, message)
+}
+
 const taskNotifiedUsers = new Set<string>()
 
 export function resetTaskReminderTracking() {

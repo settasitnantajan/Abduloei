@@ -10,6 +10,7 @@ import {
   StickyNote,
   MessageCircle,
   Repeat,
+  CalendarDays,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -58,6 +59,12 @@ const navItems: NavItem[] = [
     label: 'กิจวัตร',
     icon: Repeat,
     path: '/routines'
+  },
+  {
+    id: 'monthly-routines',
+    label: 'รายเดือน',
+    icon: CalendarDays,
+    path: '/monthly-routines'
   },
   {
     id: 'settings',

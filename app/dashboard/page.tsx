@@ -3,9 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserEvents } from '@/app/actions/events';
 import { getUserTasks } from '@/app/actions/tasks';
 import { getUserNotes } from '@/app/actions/notes';
+import { getUserRoutines } from '@/app/actions/routines';
+import { getUserMonthlyRoutines } from '@/app/actions/monthly-routines';
 import DashboardTabs from '@/components/dashboard/DashboardTabs';
 import Link from 'next/link';
-import { Calendar, CheckSquare, StickyNote } from 'lucide-react';
+import { Calendar, CheckSquare, StickyNote, Repeat, CalendarDays } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +20,12 @@ export default async function DashboardPage() {
   }
 
   // ดึงข้อมูลทั้ง 3 แบบพร้อมกัน
-  const [eventsResult, tasksResult, notesResult] = await Promise.all([
+  const [eventsResult, tasksResult, notesResult, routinesResult, monthlyRoutinesResult] = await Promise.all([
     getUserEvents(),
     getUserTasks(),
     getUserNotes(),
+    getUserRoutines(),
+    getUserMonthlyRoutines(),
   ]);
 
   // รวมทุกอย่างเป็น calendar events
@@ -68,6 +72,8 @@ export default async function DashboardPage() {
   const totalTasks = tasksResult.tasks?.length || 0;
   const pendingTasks = tasksResult.tasks?.filter(t => t.status === 'pending').length || 0;
   const totalNotes = notesResult.notes?.length || 0;
+  const activeRoutines = routinesResult.routines?.filter(r => r.is_active).length || 0;
+  const activeMonthlyRoutines = monthlyRoutinesResult.routines?.filter(r => r.is_active).length || 0;
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-6">
@@ -79,7 +85,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Stats — กดไปหน้าแต่ละโหมด */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           <Link href="/events" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-[#00B900]/50 transition-colors">
             <div className="w-10 h-10 rounded-lg bg-[#00B900]/20 flex items-center justify-center shrink-0">
               <Calendar className="w-5 h-5 text-[#00B900]" />
@@ -105,6 +111,24 @@ export default async function DashboardPage() {
             <div>
               <p className="text-lg font-bold text-white">{totalNotes}</p>
               <p className="text-xs text-gray-500">บันทึก</p>
+            </div>
+          </Link>
+          <Link href="/routines" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-purple-500/50 transition-colors">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
+              <Repeat className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-white">{activeRoutines}</p>
+              <p className="text-xs text-gray-500">กิจวัตร</p>
+            </div>
+          </Link>
+          <Link href="/monthly-routines" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-pink-500/50 transition-colors">
+            <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center shrink-0">
+              <CalendarDays className="w-5 h-5 text-pink-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-white">{activeMonthlyRoutines}</p>
+              <p className="text-xs text-gray-500">รายเดือน</p>
             </div>
           </Link>
         </div>

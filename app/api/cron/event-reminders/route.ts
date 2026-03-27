@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendEventReminderToLine, sendRoutineReminderToLine, sendTaskReminderToLine, resetReminderTracking, resetTaskReminderTracking } from '@/lib/line/notifications'
+import { sendEventReminderToLine, sendRoutineReminderToLine, sendTaskReminderToLine, sendMonthlyRoutineReminderToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
@@ -41,10 +41,12 @@ export async function GET(request: Request) {
 
   resetReminderTracking()
   resetTaskReminderTracking()
+  resetMonthlyRoutineTracking()
   const now = new Date()
   const nowMs = now.getTime()
   const sent: string[] = []
   const routinesSentIds = new Set<string>()
+  const monthlyRoutinesSentIds = new Set<string>()
 
   try {
     for (const linkedUser of linkedUsers) {
@@ -236,6 +238,42 @@ export async function GET(request: Request) {
           }
         }
       }
+
+      // --- เตือนกิจวัตรรายเดือน (Monthly Routines) ---
+      const todayDom = bangkokNow.getDate()
+
+      let monthlyQuery = adminClient
+        .from('monthly_routines')
+        .select('id, user_id, title, description, routine_time, day_of_month, remind_before_minutes, last_reminded_date')
+        .eq('is_active', true)
+        .eq('day_of_month', todayDom)
+
+      if (userFilter) monthlyQuery = monthlyQuery.eq('user_id', userId)
+
+      const { data: monthlyRoutines, error: errMonthly } = await monthlyQuery
+
+      if (errMonthly) console.error('[CRON] Error querying monthly routines:', errMonthly)
+
+      if (monthlyRoutines) {
+        for (const routine of monthlyRoutines) {
+          if (routine.last_reminded_date === todayDateStr) continue
+
+          const routineDateTime = buildEventDate(todayDateStr, routine.routine_time)
+          if (!routineDateTime) continue
+
+          const remindAt = new Date(routineDateTime.getTime() - routine.remind_before_minutes * 60 * 1000)
+          const diffMs = remindAt.getTime() - nowMs
+          const diffMinutes = diffMs / (1000 * 60)
+
+          if (diffMinutes >= -5 && diffMinutes <= 20) {
+            const result = await sendMonthlyRoutineReminderToLine(lineUserId, routine)
+            if (result.success) {
+              if (!monthlyRoutinesSentIds.has(routine.id)) monthlyRoutinesSentIds.add(routine.id)
+              sent.push(`monthly: ${routine.title} (${userId ? userId.slice(0, 8) : 'env'})`)
+            }
+          }
+        }
+      }
     }
 
     // Update last_reminded_date หลังส่งครบทุก LINE ID แล้ว
@@ -243,6 +281,12 @@ export async function GET(request: Request) {
     for (const routineId of routinesSentIds) {
       await adminClient
         .from('routines')
+        .update({ last_reminded_date: todayStr })
+        .eq('id', routineId)
+    }
+    for (const routineId of monthlyRoutinesSentIds) {
+      await adminClient
+        .from('monthly_routines')
         .update({ last_reminded_date: todayStr })
         .eq('id', routineId)
     }
