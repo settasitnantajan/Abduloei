@@ -43,6 +43,7 @@ export async function GET(request: Request) {
   const now = new Date()
   const nowMs = now.getTime()
   const sent: string[] = []
+  const routinesSentIds = new Set<string>()
 
   try {
     for (const linkedUser of linkedUsers) {
@@ -134,7 +135,7 @@ export async function GET(request: Request) {
 
       let routineQuery = adminClient
         .from('routines')
-        .select('id, user_id, title, routine_time, days_of_week, remind_before_minutes, last_reminded_date')
+        .select('id, user_id, title, description, routine_time, days_of_week, remind_before_minutes, last_reminded_date')
         .eq('is_active', true)
 
       if (userFilter) routineQuery = routineQuery.eq('user_id', userId)
@@ -158,15 +159,22 @@ export async function GET(request: Request) {
           if (diffMinutes >= -5 && diffMinutes <= 20) {
             const result = await sendRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
-              await adminClient
-                .from('routines')
-                .update({ last_reminded_date: todayDateStr })
-                .eq('id', routine.id)
+              // เก็บ routine id ไว้ update last_reminded_date ทีหลัง (หลังส่งครบทุก LINE ID)
+              if (!routinesSentIds.has(routine.id)) routinesSentIds.add(routine.id)
               sent.push(`routine: ${routine.title} (${userId ? userId.slice(0, 8) : 'env'})`)
             }
           }
         }
       }
+    }
+
+    // Update last_reminded_date หลังส่งครบทุก LINE ID แล้ว
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+    for (const routineId of routinesSentIds) {
+      await adminClient
+        .from('routines')
+        .update({ last_reminded_date: todayStr })
+        .eq('id', routineId)
     }
 
     return NextResponse.json({ message: 'Event & routine reminders processed', sent, usersCount: linkedUsers.length })

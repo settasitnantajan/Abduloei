@@ -142,22 +142,26 @@ export function resetReminderTracking() {
 
 export async function sendRoutineReminderToLine(
   lineUserId: string,
-  routine: { id: string; user_id?: string; title: string; routine_time: string; remind_before_minutes: number }
+  routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
   let message = `⏰ เตือนกิจวัตร\n`
   message += '━━━━━━━━━━━━━━━\n'
-  message += `${routine.title}\n`
-  message += `เวลา: ${timeStr} น.\n`
+  message += `📌 ${routine.title}\n`
+  if (routine.description) message += `${routine.description}\n`
+  message += `⏰ เวลา: ${timeStr} น.\n`
   message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
 
   const routineKey = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !routineNotifiedUsers.has(routineKey)) {
     routineNotifiedUsers.add(routineKey)
+    const webMsg = routine.description
+      ? `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น. — ${routine.description}`
+      : `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น.`
     await saveWebNotification(
       routine.user_id,
       `⏰ ${routine.title}`,
-      `อีก ${routine.remind_before_minutes} นาที เวลา ${timeStr} น.`,
+      webMsg,
       'routine_reminder'
     )
   }
