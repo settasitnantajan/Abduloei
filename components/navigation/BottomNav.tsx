@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -12,8 +12,6 @@ import {
   Repeat,
   CalendarDays,
   Settings,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,160 +22,77 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  {
-    id: 'dashboard',
-    label: 'ภาพรวม',
-    icon: LayoutDashboard,
-    path: '/dashboard'
-  },
-  {
-    id: 'events',
-    label: 'นัดหมาย',
-    icon: Calendar,
-    path: '/events'
-  },
-  {
-    id: 'tasks',
-    label: 'งาน',
-    icon: CheckSquare,
-    path: '/tasks'
-  },
-  {
-    id: 'notes',
-    label: 'บันทึก',
-    icon: StickyNote,
-    path: '/notes'
-  },
-  {
-    id: 'chat',
-    label: 'แชท',
-    icon: MessageCircle,
-    path: '/chat'
-  },
-  {
-    id: 'routines',
-    label: 'กิจวัตร',
-    icon: Repeat,
-    path: '/routines'
-  },
-  {
-    id: 'monthly-routines',
-    label: 'รายเดือน',
-    icon: CalendarDays,
-    path: '/monthly-routines'
-  },
-  {
-    id: 'settings',
-    label: 'ตั้งค่า',
-    icon: Settings,
-    path: '/settings'
-  }
+  { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard, path: '/dashboard' },
+  { id: 'events', label: 'นัดหมาย', icon: Calendar, path: '/events' },
+  { id: 'tasks', label: 'งาน', icon: CheckSquare, path: '/tasks' },
+  { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes' },
+  { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
+  { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines' },
+  { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines' },
+  { id: 'settings', label: 'ตั้งค่า', icon: Settings, path: '/settings' },
 ];
-
-const VISIBLE_COUNT = 4;
 
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const [offset, setOffset] = useState(0);
-  const maxOffset = navItems.length - VISIBLE_COUNT;
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ถ้า active item อยู่นอกช่วงที่แสดง ให้เลื่อนไปหา
+  // เลื่อนไปหา active item อัตโนมัติ
   useEffect(() => {
-    const activeIndex = navItems.findIndex(item => item.path === pathname);
-    if (activeIndex >= 0) {
-      if (activeIndex < offset) {
-        setOffset(activeIndex);
-      } else if (activeIndex >= offset + VISIBLE_COUNT) {
-        setOffset(Math.min(activeIndex - VISIBLE_COUNT + 1, maxOffset));
-      }
+    const container = scrollRef.current;
+    if (!container) return;
+    const activeEl = container.querySelector('[data-active="true"]') as HTMLElement;
+    if (activeEl) {
+      const left = activeEl.offsetLeft - container.offsetWidth / 2 + activeEl.offsetWidth / 2;
+      container.scrollTo({ left, behavior: 'smooth' });
     }
-  }, [pathname, offset, maxOffset]);
-
-  const canGoLeft = offset > 0;
-  const canGoRight = offset < maxOffset;
-
-  const visibleItems = navItems.slice(offset, offset + VISIBLE_COUNT);
+  }, [pathname]);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#1A1A1A] border-t border-[#333333] md:hidden pb-safe">
-      <div className="flex items-center h-16">
-        {/* ปุ่มเลื่อนซ้าย */}
-        <button
-          onClick={() => setOffset(prev => Math.max(prev - 1, 0))}
-          className={`flex items-center justify-center w-8 h-full shrink-0 transition-colors ${
-            canGoLeft ? 'text-gray-300 active:text-white' : 'text-[#2A2A2A]'
-          }`}
-          disabled={!canGoLeft}
-          aria-label="เลื่อนซ้าย"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
+      <div
+        ref={scrollRef}
+        className="flex items-center h-16 overflow-x-auto scrollbar-hide"
+      >
+        {navItems.map((item) => {
+          const isActive = pathname === item.path;
+          const Icon = item.icon;
 
-        {/* เมนู 4 อัน */}
-        <div className="flex items-center flex-1 h-full">
-          {visibleItems.map((item) => {
-            const isActive = pathname === item.path;
-            const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              data-active={isActive}
+              onClick={() => router.push(item.path)}
+              className="relative flex flex-col items-center justify-center h-full min-w-[72px] px-2"
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="bottomNavActiveIndicator"
+                  className="absolute top-0 left-0 right-0 h-0.5 bg-[#00B900]"
+                  initial={false}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
+              )}
 
-            return (
-              <button
-                key={item.id}
-                onClick={() => router.push(item.path)}
-                className="relative flex flex-col items-center justify-center flex-1 h-full"
-                aria-label={item.label}
-                aria-current={isActive ? 'page' : undefined}
+              <div className="flex items-center justify-center h-9 w-9">
+                <Icon
+                  className={`h-5 w-5 transition-colors ${isActive ? 'text-[#00B900]' : 'text-gray-400'}`}
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
+              </div>
+
+              <span
+                className={`text-[10px] mt-0.5 whitespace-nowrap transition-colors ${
+                  isActive ? 'text-[#00B900] font-semibold' : 'text-gray-400 font-normal'
+                }`}
               >
-                {/* Active indicator */}
-                {isActive && (
-                  <motion.div
-                    layoutId="bottomNavActiveIndicator"
-                    className="absolute top-0 left-0 right-0 h-0.5 bg-[#00B900]"
-                    initial={false}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 400,
-                      damping: 30
-                    }}
-                  />
-                )}
-
-                {/* Icon */}
-                <div className="flex items-center justify-center h-9 w-9">
-                  <Icon
-                    className={`h-5 w-5 transition-colors ${
-                      isActive ? 'text-[#00B900]' : 'text-gray-400'
-                    }`}
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
-                </div>
-
-                {/* Label */}
-                <span
-                  className={`text-[10px] mt-0.5 transition-colors ${
-                    isActive
-                      ? 'text-[#00B900] font-semibold'
-                      : 'text-gray-400 font-normal'
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ปุ่มเลื่อนขวา */}
-        <button
-          onClick={() => setOffset(prev => Math.min(prev + 1, maxOffset))}
-          className={`flex items-center justify-center w-8 h-full shrink-0 transition-colors ${
-            canGoRight ? 'text-gray-300 active:text-white' : 'text-[#2A2A2A]'
-          }`}
-          disabled={!canGoRight}
-          aria-label="เลื่อนขวา"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
