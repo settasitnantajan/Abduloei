@@ -37,3 +37,7 @@ export async function markCommandExecuted(messageId: string) {
 export async function markCommandRejected(messageId: string) {
   return chatDb.markCommandRejected(messageId);
 }
+
+export async function clearChat(conversationId: string) {
+  return chatDb.clearChatMessages(conversationId);
+}

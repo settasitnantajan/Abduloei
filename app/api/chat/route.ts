@@ -672,8 +672,14 @@ export async function POST(request: NextRequest) {
       }
     } catch (aiError) {
       console.error('AI generation error:', aiError);
-      console.error('AI error details:', aiError instanceof Error ? aiError.message : String(aiError));
-      aiResponse = 'ขอโทษครับ ตอนนี้ผมมีปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งนะครับ 🙏';
+      const errMsg = aiError instanceof Error ? aiError.message : String(aiError);
+      console.error('AI error details:', errMsg);
+
+      if (errMsg === 'RATE_LIMIT') {
+        aiResponse = 'ตอนนี้มีคนใช้งานเยอะ รอสักครู่แล้วลองใหม่นะครับ ⏳';
+      } else {
+        aiResponse = 'ขอโทษครับ ตอนนี้ผมมีปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งนะครับ 🙏';
+      }
     }
 
     // Save AI response

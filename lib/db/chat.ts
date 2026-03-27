@@ -493,3 +493,30 @@ export async function markCommandRejected(
     return { success: false, error: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' };
   }
 }
+
+/**
+ * ลบข้อความทั้งหมดใน conversation
+ */
+export async function clearChatMessages(
+  conversationId: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('conversation_id', conversationId);
+
+    if (error) {
+      console.error('Error clearing chat messages:', error);
+      return { success: false, error: 'ไม่สามารถล้างแชทได้' };
+    }
+
+    revalidatePath('/chat');
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Unexpected error in clearChatMessages:', error);
+    return { success: false, error: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' };
+  }
+}

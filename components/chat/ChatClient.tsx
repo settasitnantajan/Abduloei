@@ -3,12 +3,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Trash2 } from 'lucide-react';
 
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import TypingIndicator from '@/components/chat/TypingIndicator';
-import { getChatMessages } from '@/app/actions/chat';
+import { getChatMessages, clearChat } from '@/app/actions/chat';
 
 import type { ChatMessage as ChatMessageType, ChatConversation } from '@/app/actions/chat';
 
@@ -35,6 +35,8 @@ export default function ChatClient({ initialConversation, initialMessages, initi
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const shouldScrollRef = useRef(true);
 
@@ -360,15 +362,24 @@ export default function ChatClient({ initialConversation, initialMessages, initi
         )}
       </AnimatePresence>
 
-      {/* Search Toggle Button (fixed top-right) */}
+      {/* Top-right buttons (fixed) */}
       {!isSearchOpen && (
-        <button
-          onClick={handleSearchOpen}
-          className="fixed top-4 right-4 md:right-8 z-20 p-2.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-gray-400 hover:text-white hover:border-[#555555] transition-colors"
-          title="ค้นหาข้อความ"
-        >
-          <Search className="w-4 h-4" />
-        </button>
+        <div className="fixed top-4 right-4 md:right-8 z-20 flex items-center gap-2">
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="p-2.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-gray-400 hover:text-red-400 hover:border-red-500/30 transition-colors"
+            title="ล้างแชท"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleSearchOpen}
+            className="p-2.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-gray-400 hover:text-white hover:border-[#555555] transition-colors"
+            title="ค้นหาข้อความ"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
       {/* Messages Area */}
@@ -501,6 +512,50 @@ export default function ChatClient({ initialConversation, initialMessages, initi
 
       {/* Input Area */}
       <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !isClearing && setShowClearConfirm(false)} />
+          <div className="relative w-full max-w-sm bg-[#1A1A1A] border border-[#333333] rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-400" />
+              </div>
+              <h3 className="text-base font-semibold text-white">ล้างแชททั้งหมด?</h3>
+            </div>
+            <p className="text-sm text-gray-400 mb-5">ข้อความทั้งหมดจะถูกลบถาวร ไม่สามารถกู้คืนได้</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={isClearing}
+                className="flex-1 h-10 rounded-lg border border-[#333333] text-gray-300 text-sm font-medium hover:bg-[#2A2A2A] transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={async () => {
+                  setIsClearing(true);
+                  const result = await clearChat(initialConversation.id);
+                  if (result.success) {
+                    setMessages([]);
+                    setHasMore(false);
+                    toast.success('ล้างแชทแล้ว');
+                  } else {
+                    toast.error(result.error || 'ไม่สามารถล้างแชทได้');
+                  }
+                  setIsClearing(false);
+                  setShowClearConfirm(false);
+                }}
+                disabled={isClearing}
+                className="flex-1 h-10 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 text-white text-sm font-medium transition-colors"
+              >
+                {isClearing ? 'กำลังลบ...' : 'ล้างแชท'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

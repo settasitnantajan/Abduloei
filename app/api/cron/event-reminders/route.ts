@@ -74,7 +74,7 @@ export async function GET(request: Request) {
           const diffMs = eventDateTime.getTime() - nowMs
           const diffHours = diffMs / (1000 * 60 * 60)
 
-          if (diffHours >= 23 && diffHours <= 25) {
+          if (diffHours >= 22 && diffHours <= 26) {
             const result = await sendEventReminderToLine(lineUserId, event, 'พรุ่งนี้มีนัด!')
             if (result.success) {
               await adminClient
@@ -114,7 +114,7 @@ export async function GET(request: Request) {
           const diffMs = eventDateTime.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= 55 && diffMinutes <= 65) {
+          if (diffMinutes >= 40 && diffMinutes <= 80) {
             const result = await sendEventReminderToLine(lineUserId, event, 'อีก 1 ชั่วโมง!')
             if (result.success) {
               await adminClient
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
           const diffMs = remindAt.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= -2 && diffMinutes <= 13) {
+          if (diffMinutes >= -5 && diffMinutes <= 20) {
             const result = await sendRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
               await adminClient

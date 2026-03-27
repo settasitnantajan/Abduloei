@@ -167,6 +167,10 @@ export async function generateAIResponse(
         }
 
         console.error(`Gemini API error (${modelName}):`, error);
+
+        if (isRateLimit) {
+          throw new Error('RATE_LIMIT');
+        }
         throw new Error('ไม่สามารถเชื่อมต่อกับ AI ได้ กรุณาลองใหม่อีกครั้ง');
       }
     }
