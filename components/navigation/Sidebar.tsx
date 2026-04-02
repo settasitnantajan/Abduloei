@@ -206,7 +206,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           )}
         </button>
         {!collapsed && (
-          <p className="text-[10px] text-gray-600 text-center mt-1">v1.0.0</p>
+          <p className="text-[10px] text-gray-600 text-center mt-1">v1.0.1</p>
         )}
       </div>
     </aside>
