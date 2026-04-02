@@ -73,18 +73,17 @@ export async function sendDailySummaryToLine(lineUserId: string, userId?: string
   if (notesError) console.error('[Notifications] Notes query failed:', notesError)
 
   // สร้างข้อความ
-  let message = `สรุปวันนี้ (${today})\n`
-  message += '━━━━━━━━━━━━━━━\n'
+  let message = `📋 สรุปวันนี้ (${today})\n`
 
   if (events && events.length > 0) {
-    message += `\nนัดหมายวันนี้ (${events.length} รายการ):\n`
+    message += `\n📌 นัดหมาย ${events.length} รายการ\n`
     for (const e of events) {
       const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
       const loc = e.location && e.location !== 'ไม่มี' ? e.location : ''
-      message += `\n📌 ${e.title}`
+      message += `• ${e.title}`
       if (time) message += ` (${time})`
-      if (loc) message += `\n   📍 ${loc}`
-      if (e.description) message += `\n   ${e.description}`
+      if (loc) message += ` 📍${loc}`
+      if (e.description) message += `\n  ${e.description}`
       message += '\n'
     }
   } else {
@@ -92,18 +91,18 @@ export async function sendDailySummaryToLine(lineUserId: string, userId?: string
   }
 
   if (tasks && tasks.length > 0) {
-    message += `\nงานค้าง (${tasks.length} รายการ):\n`
+    message += `\n📝 งานค้าง ${tasks.length} รายการ\n`
     for (const t of tasks) {
-      const due = t.due_date ? ` (กำหนด ${t.due_date})` : ''
-      message += `- ${t.title}${due}\n`
+      const due = t.due_date ? ` (${t.due_date})` : ''
+      message += `• ${t.title}${due}\n`
     }
   }
 
   if (notes && notes.length > 0) {
-    message += `\nบันทึกล่าสุด (${notes.length}):\n`
+    message += `\n🗒️ บันทึกล่าสุด ${notes.length} รายการ\n`
     for (const n of notes) {
       const cat = n.category ? ` [${n.category}]` : ''
-      message += `- ${n.title}${cat}\n`
+      message += `• ${n.title}${cat}\n`
     }
   }
 
@@ -145,12 +144,9 @@ export async function sendRoutineReminderToLine(
   routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
-  let message = `⏰ เตือนกิจวัตร\n`
-  message += '━━━━━━━━━━━━━━━\n'
-  message += `📌 ${routine.title}\n`
-  if (routine.description) message += `${routine.description}\n`
-  message += `⏰ เวลา: ${timeStr} น.\n`
-  message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
+  let message = `⏰ ${routine.title}\n`
+  message += `เวลา ${timeStr} น.`
+  if (routine.description) message += `\n${routine.description}`
 
   const routineKey = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !routineNotifiedUsers.has(routineKey)) {
@@ -174,13 +170,13 @@ export async function sendEventReminderToLine(
   event: { id: string; user_id?: string; title: string; description?: string | null; event_date: string; event_time: string | null; location: string | null },
   timeLabel: string
 ) {
-  let message = `แจ้งเตือน: ${timeLabel}\n`
-  message += '━━━━━━━━━━━━━━━\n'
+  let message = `🔔 ${timeLabel}\n`
   message += `📌 ${event.title}\n`
-  if (event.description) message += `${event.description}\n`
-  if (event.event_date) message += `📅 ${event.event_date}\n`
-  if (event.event_time) message += `⏰ ${event.event_time.slice(0, 5)} น.\n`
+  if (event.event_date) message += `📅 ${event.event_date}`
+  if (event.event_time) message += ` ⏰ ${event.event_time.slice(0, 5)} น.`
+  message += '\n'
   if (event.location && event.location !== 'ไม่มี') message += `📍 ${event.location}\n`
+  if (event.description) message += `${event.description}\n`
 
   const eventKey = `${event.user_id}:${event.id}:${timeLabel}`
   if (event.user_id && !eventNotifiedUsers.has(eventKey)) {
@@ -213,13 +209,10 @@ export async function sendMonthlyRoutineReminderToLine(
   routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; day_of_month: number; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
-  let message = `📅 เตือนกิจวัตรรายเดือน\n`
-  message += '━━━━━━━━━━━━━━━\n'
-  message += `📌 ${routine.title}\n`
-  if (routine.description) message += `${routine.description}\n`
-  message += `📅 ทุกวันที่ ${routine.day_of_month} ของเดือน\n`
-  message += `⏰ เวลา: ${timeStr} น.\n`
-  message += `(เตือนก่อน ${routine.remind_before_minutes} นาที)`
+  const dayLabel = routine.day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${routine.day_of_month}`
+  let message = `📅 ${routine.title}\n`
+  message += `${dayLabel} เวลา ${timeStr} น.`
+  if (routine.description) message += `\n${routine.description}`
 
   const key = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !monthlyRoutineNotifiedUsers.has(key)) {
@@ -249,12 +242,12 @@ export async function sendTaskReminderToLine(
   task: { id: string; user_id?: string; title: string; description?: string | null; due_date: string; due_time: string | null },
   timeLabel: string
 ) {
-  let message = `แจ้งเตือนงาน: ${timeLabel}\n`
-  message += '━━━━━━━━━━━━━━━\n'
+  let message = `🔔 ${timeLabel}\n`
   message += `📋 ${task.title}\n`
+  if (task.due_date) message += `📅 ${task.due_date}`
+  if (task.due_time) message += ` ⏰ ${task.due_time.slice(0, 5)} น.`
+  message += '\n'
   if (task.description) message += `${task.description}\n`
-  if (task.due_date) message += `📅 ${task.due_date}\n`
-  if (task.due_time) message += `⏰ ${task.due_time.slice(0, 5)} น.\n`
 
   const taskKey = `${task.user_id}:${task.id}:${timeLabel}`
   if (task.user_id && !taskNotifiedUsers.has(taskKey)) {

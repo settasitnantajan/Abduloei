@@ -45,8 +45,6 @@ export async function GET(request: Request) {
   const now = new Date()
   const nowMs = now.getTime()
   const sent: string[] = []
-  const routinesSentIds = new Set<string>()
-  const monthlyRoutinesSentIds = new Set<string>()
 
   try {
     for (const linkedUser of linkedUsers) {
@@ -74,11 +72,12 @@ export async function GET(request: Request) {
         for (const event of events1d) {
           const eventDateTime = buildEventDate(event.event_date, event.event_time)
           if (!eventDateTime) continue
+          if (eventDateTime.getTime() < nowMs) continue // นัดผ่านไปแล้ว ข้าม
 
           const diffMs = eventDateTime.getTime() - nowMs
           const diffHours = diffMs / (1000 * 60 * 60)
 
-          if (diffHours >= 22 && diffHours <= 26) {
+          if (diffHours >= 23 && diffHours <= 25) {
             const result = await sendEventReminderToLine(lineUserId, event, 'พรุ่งนี้มีนัด!')
             if (result.success) {
               await adminClient
@@ -114,11 +113,12 @@ export async function GET(request: Request) {
 
           const eventDateTime = buildEventDate(event.event_date, event.event_time)
           if (!eventDateTime) continue
+          if (eventDateTime.getTime() < nowMs) continue // นัดผ่านไปแล้ว ข้าม
 
           const diffMs = eventDateTime.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= 40 && diffMinutes <= 80) {
+          if (diffMinutes >= 45 && diffMinutes <= 75) {
             const result = await sendEventReminderToLine(lineUserId, event, 'อีก 1 ชั่วโมง!')
             if (result.success) {
               await adminClient
@@ -147,11 +147,12 @@ export async function GET(request: Request) {
         for (const task of tasks1d) {
           const taskDateTime = buildEventDate(task.due_date, task.due_time)
           if (!taskDateTime) continue
+          if (taskDateTime.getTime() < nowMs) continue // งานผ่านไปแล้ว ข้าม
 
           const diffMs = taskDateTime.getTime() - nowMs
           const diffHours = diffMs / (1000 * 60 * 60)
 
-          if (diffHours >= 22 && diffHours <= 26) {
+          if (diffHours >= 23 && diffHours <= 25) {
             const result = await sendTaskReminderToLine(lineUserId, task, 'พรุ่งนี้มีงาน!')
             if (result.success) {
               await adminClient
@@ -183,11 +184,12 @@ export async function GET(request: Request) {
 
           const taskDateTime = buildEventDate(task.due_date, task.due_time)
           if (!taskDateTime) continue
+          if (taskDateTime.getTime() < nowMs) continue // งานผ่านไปแล้ว ข้าม
 
           const diffMs = taskDateTime.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= 40 && diffMinutes <= 80) {
+          if (diffMinutes >= 45 && diffMinutes <= 75) {
             const result = await sendTaskReminderToLine(lineUserId, task, 'อีก 1 ชั่วโมง!')
             if (result.success) {
               await adminClient
@@ -228,11 +230,14 @@ export async function GET(request: Request) {
           const diffMs = remindAt.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= -5 && diffMinutes <= 20) {
+          if (diffMinutes >= -2 && diffMinutes <= 15) {
             const result = await sendRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
-              // เก็บ routine id ไว้ update last_reminded_date ทีหลัง (หลังส่งครบทุก LINE ID)
-              if (!routinesSentIds.has(routine.id)) routinesSentIds.add(routine.id)
+              // อัพเดท last_reminded_date ทันทีเพื่อป้องกัน race condition
+              await adminClient
+                .from('routines')
+                .update({ last_reminded_date: todayDateStr })
+                .eq('id', routine.id)
               sent.push(`routine: ${routine.title} (${userId ? userId.slice(0, 8) : 'env'})`)
             }
           }
@@ -270,30 +275,19 @@ export async function GET(request: Request) {
           const diffMs = remindAt.getTime() - nowMs
           const diffMinutes = diffMs / (1000 * 60)
 
-          if (diffMinutes >= -5 && diffMinutes <= 20) {
+          if (diffMinutes >= -2 && diffMinutes <= 15) {
             const result = await sendMonthlyRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
-              if (!monthlyRoutinesSentIds.has(routine.id)) monthlyRoutinesSentIds.add(routine.id)
+              // อัพเดท last_reminded_date ทันทีเพื่อป้องกัน race condition
+              await adminClient
+                .from('monthly_routines')
+                .update({ last_reminded_date: todayDateStr })
+                .eq('id', routine.id)
               sent.push(`monthly: ${routine.title} (${userId ? userId.slice(0, 8) : 'env'})`)
             }
           }
         }
       }
-    }
-
-    // Update last_reminded_date หลังส่งครบทุก LINE ID แล้ว
-    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-    for (const routineId of routinesSentIds) {
-      await adminClient
-        .from('routines')
-        .update({ last_reminded_date: todayStr })
-        .eq('id', routineId)
-    }
-    for (const routineId of monthlyRoutinesSentIds) {
-      await adminClient
-        .from('monthly_routines')
-        .update({ last_reminded_date: todayStr })
-        .eq('id', routineId)
     }
 
     return NextResponse.json({ message: 'Event & routine reminders processed', sent, usersCount: linkedUsers.length })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { adminClient } from '@/lib/supabase/admin'
 import { sendDailySummaryToLine, resetDailySummaryTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 
@@ -42,7 +43,25 @@ export async function GET(request: Request) {
   const sent: string[] = []
 
   try {
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+
     for (const { user_id: userId, line_user_id: lineUserId } of linkedUsers) {
+      // เช็คว่าวันนี้ส่ง daily_summary ไปแล้วหรือยัง (DB-level dedup)
+      if (userId) {
+        const { data: existing } = await adminClient
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('type', 'daily_summary')
+          .gte('created_at', todayStr + 'T00:00:00+07:00')
+          .limit(1)
+
+        if (existing && existing.length > 0) {
+          console.log(`[CRON] Daily summary already sent for ${userId.slice(0, 8)} today, skipping`)
+          continue
+        }
+      }
+
       const result = await sendDailySummaryToLine(lineUserId, userId || undefined)
       if (result.success) {
         sent.push(userId ? userId.slice(0, 8) : 'env')
