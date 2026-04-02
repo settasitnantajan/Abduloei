@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { getHomeMembers, createHomeMember, updateHomeMember, deleteHomeMember } from '@/app/actions/home-members'
+import { getLinkingStatus } from '@/app/actions/line-linking'
 import { Users, Plus, Pencil, Trash2, Loader2, X, Check, Crown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -15,6 +16,7 @@ interface Member {
 
 export default function HomeMembersCard() {
   const [members, setMembers] = useState<Member[]>([])
+  const [lineAccounts, setLineAccounts] = useState<Array<{ id: string; lineUserId: string }>>([])
   const [loading, setLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
@@ -32,8 +34,9 @@ export default function HomeMembersCard() {
 
   function loadMembers() {
     startTransition(async () => {
-      const data = await getHomeMembers()
+      const [data, linkStatus] = await Promise.all([getHomeMembers(), getLinkingStatus()])
       setMembers(data)
+      setLineAccounts(linkStatus.accounts)
       setLoading(false)
     })
   }
@@ -221,14 +224,23 @@ export default function HomeMembersCard() {
             />
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">LINE User ID (ถ้ามี จะเตือนตรงถึงคนนี้)</label>
-            <input
-              type="text"
-              value={formLineId}
-              onChange={(e) => setFormLineId(e.target.value)}
-              placeholder="U1234..."
-              className="w-full bg-[#0A0A0A] border border-[#333333] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono text-xs"
-            />
+            <label className="text-xs text-gray-400 mb-1 block">LINE (ถ้าเลือก จะเตือนตรงถึงคนนี้)</label>
+            {lineAccounts.length > 0 ? (
+              <select
+                value={formLineId}
+                onChange={(e) => setFormLineId(e.target.value)}
+                className="w-full bg-[#0A0A0A] border border-[#333333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="">ไม่ระบุ (เตือนทุกคน)</option>
+                {lineAccounts.map((acc, i) => (
+                  <option key={acc.id} value={acc.lineUserId}>
+                    LINE #{i + 1} ({acc.lineUserId.slice(0, 10)}...)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-gray-600">ยังไม่มี LINE เชื่อม — เชื่อม LINE ก่อนที่ด้านบน</p>
+            )}
           </div>
           <div className="flex items-center gap-2 pt-1">
             <Button

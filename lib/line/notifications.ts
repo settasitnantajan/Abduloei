@@ -267,3 +267,127 @@ export async function sendTaskReminderToLine(
 
   return sendTextMessage(lineUserId, message)
 }
+
+export async function sendWeeklySummaryToLine(lineUserId: string, userId?: string) {
+  const now = new Date()
+
+  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const dayOfWeek = bangkokNow.getDay()
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const monday = new Date(bangkokNow)
+  monday.setDate(bangkokNow.getDate() + mondayOffset)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+
+  const mondayStr = monday.toLocaleDateString('en-CA')
+  const sundayStr = sunday.toLocaleDateString('en-CA')
+
+  let eventsQuery = adminClient
+    .from('events')
+    .select('title, event_date, event_time, location')
+    .gte('event_date', mondayStr)
+    .lte('event_date', sundayStr)
+    .order('event_date', { ascending: true })
+    .order('event_time', { ascending: true })
+
+  let tasksQuery = adminClient
+    .from('tasks')
+    .select('title, due_date, status')
+    .eq('status', 'pending')
+    .order('due_date', { ascending: true })
+    .limit(15)
+
+  let completedQuery = adminClient
+    .from('tasks')
+    .select('title')
+    .eq('status', 'completed')
+    .gte('updated_at', mondayStr + 'T00:00:00+07:00')
+    .limit(10)
+
+  if (userId) {
+    eventsQuery = eventsQuery.eq('user_id', userId)
+    tasksQuery = tasksQuery.eq('user_id', userId)
+    completedQuery = completedQuery.eq('user_id', userId)
+  }
+
+  const [
+    { data: events },
+    { data: pendingTasks },
+    { data: completedTasks },
+  ] = await Promise.all([eventsQuery, tasksQuery, completedQuery])
+
+  const nextMonday = new Date(monday)
+  nextMonday.setDate(monday.getDate() + 7)
+  const nextSunday = new Date(nextMonday)
+  nextSunday.setDate(nextMonday.getDate() + 6)
+  const nextMondayStr = nextMonday.toLocaleDateString('en-CA')
+  const nextSundayStr = nextSunday.toLocaleDateString('en-CA')
+
+  let nextWeekQuery = adminClient
+    .from('events')
+    .select('title, event_date, event_time')
+    .gte('event_date', nextMondayStr)
+    .lte('event_date', nextSundayStr)
+    .order('event_date', { ascending: true })
+    .limit(5)
+
+  if (userId) nextWeekQuery = nextWeekQuery.eq('user_id', userId)
+  const { data: nextWeekEvents } = await nextWeekQuery
+
+  let message = `📊 สรุปรายสัปดาห์\n`
+  message += `${mondayStr} — ${sundayStr}\n`
+
+  if (events && events.length > 0) {
+    message += `\n📌 นัดหมาย ${events.length} รายการ\n`
+    for (const e of events) {
+      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+      message += `• ${e.event_date.slice(5)} ${e.title}`
+      if (time) message += ` (${time})`
+      message += '\n'
+    }
+  } else {
+    message += '\nสัปดาห์นี้ไม่มีนัดหมาย\n'
+  }
+
+  if (completedTasks && completedTasks.length > 0) {
+    message += `\n✅ ทำเสร็จแล้ว ${completedTasks.length} รายการ\n`
+    for (const t of completedTasks) {
+      message += `• ${t.title}\n`
+    }
+  }
+
+  if (pendingTasks && pendingTasks.length > 0) {
+    message += `\n📝 งานค้าง ${pendingTasks.length} รายการ\n`
+    for (const t of pendingTasks) {
+      const due = t.due_date ? ` (${t.due_date})` : ''
+      message += `• ${t.title}${due}\n`
+    }
+  }
+
+  if (nextWeekEvents && nextWeekEvents.length > 0) {
+    message += `\n🔜 สัปดาห์หน้า ${nextWeekEvents.length} นัด\n`
+    for (const e of nextWeekEvents) {
+      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+      message += `• ${e.event_date.slice(5)} ${e.title}`
+      if (time) message += ` (${time})`
+      message += '\n'
+    }
+  }
+
+  message += '\nสู้ๆ สัปดาห์หน้านะคะ!'
+
+  if (userId) {
+    const eventCount = events?.length ?? 0
+    const completedCount = completedTasks?.length ?? 0
+    const pendingCount = pendingTasks?.length ?? 0
+    const webMsg = `นัด ${eventCount} | เสร็จ ${completedCount} | ค้าง ${pendingCount}`
+    await saveWebNotification(
+      userId,
+      `📊 สรุปสัปดาห์ (${mondayStr})`,
+      webMsg,
+      'weekly_summary'
+    )
+  }
+
+  return sendTextMessage(lineUserId, truncateMessage(message))
+}

@@ -1,0 +1,16 @@
+name: Weekly Summary
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # ทุกวันอาทิตย์ 10:00 เวลาไทย (03:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call weekly summary endpoint
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://abduloei-app.vercel.app/api/cron/weekly-summary"
