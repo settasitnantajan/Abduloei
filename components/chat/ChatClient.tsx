@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Trash2, Volume2, VolumeX } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Trash2, Volume2, VolumeX, MessageSquare } from 'lucide-react';
+import ChatRoomSidebar from '@/components/chat/ChatRoomSidebar';
 
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
@@ -16,6 +17,7 @@ interface ChatClientProps {
   initialConversation: ChatConversation;
   initialMessages: ChatMessageType[];
   initialHasMore: boolean;
+  conversations?: ChatConversation[];
 }
 
 function speakThai(text: string) {
@@ -37,7 +39,7 @@ function speakThai(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
-export default function ChatClient({ initialConversation, initialMessages, initialHasMore }: ChatClientProps) {
+export default function ChatClient({ initialConversation, initialMessages, initialHasMore, conversations = [] }: ChatClientProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -57,6 +59,7 @@ export default function ChatClient({ initialConversation, initialMessages, initi
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [showRoomSidebar, setShowRoomSidebar] = useState(false);
 
   const shouldScrollRef = useRef(true);
 
@@ -387,9 +390,26 @@ export default function ChatClient({ initialConversation, initialMessages, initi
         )}
       </AnimatePresence>
 
-      {/* Top-right buttons (fixed) */}
+      {/* Room Sidebar */}
+      {showRoomSidebar && (
+        <ChatRoomSidebar
+          conversations={conversations}
+          activeId={initialConversation.id}
+          onClose={() => setShowRoomSidebar(false)}
+        />
+      )}
+
+      {/* Top buttons (fixed) */}
       {!isSearchOpen && (
-        <div className="fixed top-4 right-4 md:right-8 z-20 flex items-center gap-2">
+        <div className="fixed top-4 left-4 md:left-auto md:right-8 right-4 z-20 flex items-center gap-2">
+          {/* ปุ่มห้องแชท — ซ้ายบน mobile, ขวาบน desktop */}
+          <button
+            onClick={() => setShowRoomSidebar(true)}
+            className="p-2.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-gray-400 hover:text-white hover:border-[#555555] transition-colors"
+            title="ห้องแชท"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
           <button
             onClick={() => { setTtsEnabled(prev => !prev); window.speechSynthesis?.cancel(); }}
             className={`p-2.5 rounded-xl bg-[#1A1A1A] border transition-colors ${ttsEnabled ? 'border-[#00B900]/50 text-[#00B900]' : 'border-[#333333] text-gray-400 hover:text-white'}`}

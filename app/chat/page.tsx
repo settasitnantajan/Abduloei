@@ -1,20 +1,29 @@
 import ChatClient from '@/components/chat/ChatClient';
 import ChatErrorState from '@/components/chat/ChatErrorState';
-import { getOrCreateConversation, getChatMessages } from '@/app/actions/chat';
+import { getOrCreateConversation, getChatMessages, getUserConversations } from '@/app/actions/chat';
 
 // Mark as dynamic route (uses cookies for auth)
 export const dynamic = 'force-dynamic';
 
-export default async function ChatPage() {
-  // Fetch data server-side (ปลอดภัย ไม่หลุด key)
-  const { conversation, error: convError } = await getOrCreateConversation();
+export default async function ChatPage({ searchParams }: { searchParams: Promise<{ room?: string }> }) {
+  const params = await searchParams;
+  const roomId = params.room;
+
+  const { conversation, error: convError } = await getOrCreateConversation(roomId);
 
   if (convError || !conversation) {
     return <ChatErrorState error={convError || 'ไม่สามารถโหลดการสนทนาได้'} />;
   }
 
   const { messages, hasMore } = await getChatMessages(conversation.id);
+  const { conversations } = await getUserConversations();
 
-  // ส่ง data ไปให้ Client Component
-  return <ChatClient initialConversation={conversation} initialMessages={messages || []} initialHasMore={hasMore} />;
+  return (
+    <ChatClient
+      initialConversation={conversation}
+      initialMessages={messages || []}
+      initialHasMore={hasMore}
+      conversations={conversations}
+    />
+  );
 }

@@ -35,12 +35,12 @@ export async function getOrCreateConversation(): Promise<{
       return { conversation: null, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
     }
 
+    // ดึง conversation ทั้งหมดของ user แล้วเลือกอันที่มีข้อความก่อน
     const { data: existingConversations, error: fetchError } = await supabase
       .from('chat_conversations')
-      .select('*')
+      .select('*, chat_messages(id)')
       .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-      .limit(1);
+      .order('updated_at', { ascending: false });
 
     if (fetchError) {
       console.error('Error fetching conversation:', fetchError);
@@ -48,7 +48,12 @@ export async function getOrCreateConversation(): Promise<{
     }
 
     if (existingConversations && existingConversations.length > 0) {
-      return { conversation: existingConversations[0], error: null };
+      // เลือกอันที่มีข้อความก่อน ถ้าไม่มีก็ใช้อันล่าสุด
+      const withMessages = existingConversations.find(c => c.chat_messages && c.chat_messages.length > 0);
+      const chosen = withMessages || existingConversations[0];
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { chat_messages, ...conversation } = chosen;
+      return { conversation, error: null };
     }
 
     const { data: newConversation, error: createError } = await supabase
@@ -70,6 +75,111 @@ export async function getOrCreateConversation(): Promise<{
   } catch (error) {
     console.error('Unexpected error in getOrCreateConversation:', error);
     return { conversation: null, error: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' };
+  }
+}
+
+/**
+ * ดึง conversations ทั้งหมดของ user
+ */
+export async function getUserConversations(): Promise<{
+  conversations: ChatConversation[];
+  error: string | null;
+}> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { conversations: [], error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false });
+
+    if (error) return { conversations: [], error: error.message };
+    return { conversations: data || [], error: null };
+  } catch {
+    return { conversations: [], error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/**
+ * สร้าง conversation ใหม่
+ */
+export async function createNewConversation(title?: string): Promise<{
+  conversation: ChatConversation | null;
+  error: string | null;
+}> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { conversation: null, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .insert({
+        user_id: user.id,
+        title: title || 'ห้องแชทใหม่',
+        home_id: null,
+      })
+      .select()
+      .single();
+
+    if (error) return { conversation: null, error: error.message };
+    return { conversation: data, error: null };
+  } catch {
+    return { conversation: null, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/**
+ * เปลี่ยนชื่อ conversation
+ */
+export async function renameConversation(conversationId: string, title: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { success: false, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    const { error } = await supabase
+      .from('chat_conversations')
+      .update({ title })
+      .eq('id', conversationId)
+      .eq('user_id', user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch {
+    return { success: false, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/**
+ * ลบ conversation + ข้อความทั้งหมด
+ */
+export async function deleteConversation(conversationId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { success: false, error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' };
+
+    // ลบ messages ก่อน
+    await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('conversation_id', conversationId);
+
+    // ลบ conversation
+    const { error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', conversationId)
+      .eq('user_id', user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch {
+    return { success: false, error: 'เกิดข้อผิดพลาด' };
   }
 }
 

@@ -5,8 +5,30 @@ import * as chatDb from '@/lib/db/chat';
 export type ChatMessage = chatDb.ChatMessage;
 export type ChatConversation = chatDb.ChatConversation;
 
-export async function getOrCreateConversation() {
+export async function getOrCreateConversation(conversationId?: string) {
+  if (conversationId) {
+    // ถ้าระบุ conversationId → ดึงอันนั้นเลย
+    const { conversations } = await chatDb.getUserConversations();
+    const found = conversations.find(c => c.id === conversationId);
+    if (found) return { conversation: found, error: null };
+  }
   return chatDb.getOrCreateConversation();
+}
+
+export async function getUserConversations() {
+  return chatDb.getUserConversations();
+}
+
+export async function createNewConversation(title?: string) {
+  return chatDb.createNewConversation(title);
+}
+
+export async function renameConversation(conversationId: string, title: string) {
+  return chatDb.renameConversation(conversationId, title);
+}
+
+export async function deleteConversation(conversationId: string) {
+  return chatDb.deleteConversation(conversationId);
 }
 
 export async function getChatMessages(conversationId: string, limit = 50, before?: string) {
