@@ -1,6 +1,6 @@
 {
   "name": "abduloei",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,7 +14,8 @@
     "migrate": "tsx scripts/migrate-with-pg.ts",
     "migrate-alt": "tsx scripts/migrate-with-service-key.ts",
     "migrate-chat": "tsx scripts/run-chat-migration-supabase.ts",
-    "open-sql": "cat supabase/migrations/20260309000000_create_chat_tables.sql | pbcopy && echo '✓ SQL copied to clipboard! Now open: https://supabase.com/dashboard/project/faxauzhlgrfuhfvlybbg/sql/new'"
+    "open-sql": "cat supabase/migrations/20260309000000_create_chat_tables.sql | pbcopy && echo '✓ SQL copied to clipboard! Now open: https://supabase.com/dashboard/project/faxauzhlgrfuhfvlybbg/sql/new'",
+    "test-intent": "tsx scripts/test-intent.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

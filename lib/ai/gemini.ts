@@ -228,7 +228,15 @@ export async function generateAIResponse(
         console.warn(`Groq ${model} error (${status}):`, error?.message?.slice(0, 100));
 
         if (isRateLimit && model === groqModels[groqModels.length - 1]) {
-          // ทุก Groq model ติด rate limit → fallback ไป Gemini
+          // ทุก Groq model ติด rate limit → retry 1 ครั้งหลัง 3 วินาที
+          console.warn('All Groq models rate limited → retry in 3s...');
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const retryResponse = await callGroq(GROQ_PRIMARY_MODEL, groqMessages);
+            if (retryResponse) return retryResponse;
+          } catch {
+            console.warn('Groq retry failed → fallback Gemini');
+          }
           break;
         }
         if (!isRateLimit) break; // error อื่น → fallback ไป Gemini

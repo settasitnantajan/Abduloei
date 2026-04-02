@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse } from '@/lib/ai/gemini';
 import { getChatMessages, saveChatMessage, queryCommands, getPendingCommand, markCommandExecuted, markCommandRejected, clearAllCommands } from '@/lib/db/chat';
 import { createClient } from '@/lib/supabase/server';
-import { detectConfirmation, generateConfirmationPrompt } from '@/lib/ai/confirmation-detector';
+import { detectConfirmation } from '@/lib/ai/confirmation-detector';
 import { CommandMetadata } from '@/lib/types/command';
 import { createEventWithChecklist, deleteAllEvents, deleteEventsByFilter, getUserEvents, updateEvent, deleteEvent } from '@/lib/db/events';
 import { createTask, deleteAllTasks, getUserTasks, updateTask, deleteTask } from '@/lib/db/tasks';
 import { createNote, deleteAllNotes, getUserNotes, updateNote, deleteNote } from '@/lib/db/notes';
 import { createRoutine, getUserRoutines, updateRoutine, deleteRoutine, deleteAllRoutines } from '@/lib/db/routines';
 import { createMonthlyRoutine, getUserMonthlyRoutines, updateMonthlyRoutine, deleteMonthlyRoutine, deleteAllMonthlyRoutines } from '@/lib/db/monthly-routines';
-import { buildAIContext, contextToPrompt, detectUserEmotion, getEmpatheticPrefix } from '@/lib/ai/context-builder';
+import { buildAIContext, contextToPrompt, detectUserEmotion } from '@/lib/ai/context-builder';
 import { processMessageForMemories } from '@/lib/db/memories';
 import { searchWeb, formatSearchResults } from '@/lib/ai/web-searcher';
 import { analyzeIntent, AnalyzedIntent } from '@/lib/ai/intent-analyzer';
@@ -18,72 +18,22 @@ import { parseThaiDate } from '@/lib/utils/thai-date-parser';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// === Variation templates เพื่อไม่ให้ AI ตอบซ้ำ ===
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-const SUCCESS_CREATE: Record<string, string[]> = {
-  'นัดหมาย': [
-    'เอาเลยๆ สร้างนัด "$T" ให้แล้วนะ ✅',
-    'โอเคๆ จัดนัด "$T" เรียบร้อย ✅',
-    'ได้เลย นัด "$T" เซ็ตไว้แล้ว ✅',
-    'สร้างนัด "$T" ให้แล้วนะ อย่าลืมล่ะ ✅',
-  ],
-  'งาน': [
-    'เพิ่มงาน "$T" ไว้แล้วนะ ✅',
-    'โอเค จดงาน "$T" ให้แล้ว ✅',
-    'ได้เลย งาน "$T" เพิ่มไว้แล้ว ✅',
-    'เรียบร้อย งาน "$T" อยู่ใน list แล้ว ✅',
-  ],
-  'บันทึก': [
-    'จดไว้ให้แล้วนะ "$T" ✅',
-    'โอเคๆ บันทึก "$T" เรียบร้อย ✅',
-    'เซฟไว้แล้ว "$T" ✅',
-    'จดเรียบร้อย "$T" ✅',
-  ],
-  'กิจวัตร': [
-    'สร้างกิจวัตร "$T" ให้แล้วนะ $D ✅',
-    'เรียบร้อย กิจวัตร "$T" $D ✅',
-    'โอเค เซ็ตกิจวัตร "$T" $D เอาไว้แล้ว ✅',
-  ],
-  'กิจวัตรรายเดือน': [
-    'สร้างกิจวัตรรายเดือน "$T" ทุก$D ให้แล้วนะ ✅',
-    'เรียบร้อย "$T" ทุก$D เซ็ตไว้แล้ว ✅',
-    'โอเค "$T" ทุก$D จัดให้แล้ว ✅',
-  ],
-};
-
-const SUCCESS_DELETE = [
-  'ลบ$T "$N" ให้แล้วนะ ✅',
-  'เรียบร้อย ลบ$T "$N" แล้ว ✅',
-  'โอเค $T "$N" ลบไปแล้ว ✅',
-];
-
-const SUCCESS_EDIT = [
-  'แก้ไข$Tเรียบร้อยแล้วนะ ✅',
-  'อัปเดต$Tให้แล้ว ✅',
-  'โอเค แก้$Tเรียบร้อย ✅',
-];
-
-const REJECT_RESPONSES = [
-  'โอเค ยกเลิกแล้วนะ',
-  'ได้เลย ไม่ทำแล้วนะ',
-  'เอาใหม่ก็บอกได้เลยนะ',
-  'ยกเลิกแล้ว มีอะไรอื่นบอกได้นะ',
-];
-
-function successMsg(type: string, title: string, detail?: string): string {
-  const templates = SUCCESS_CREATE[type] || [`${type} "$T" เรียบร้อยแล้ว ✅`];
-  return pick(templates).replace('$T', title).replace('$D', detail || '');
-}
-
-function deleteMsg(typeName: string, title: string): string {
-  return pick(SUCCESS_DELETE).replace('$T', typeName).replace('$N', title);
-}
-
-function editMsg(typeName: string): string {
-  return pick(SUCCESS_EDIT).replace('$T', typeName);
+// === AI-generated messages แทน hardcoded templates ===
+// ส่ง context ว่าเกิดอะไรขึ้นให้ AI แล้วให้ AI ตอบเองเป็นธรรมชาติ
+async function generateActionResponse(
+  systemContext: string,
+  userMessage: string,
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[] = []
+): Promise<string> {
+  try {
+    return await generateAIResponse(
+      userMessage,
+      conversationHistory,
+      systemContext
+    );
+  } catch {
+    return 'เรียบร้อยแล้วนะ ✅';
+  }
 }
 
 interface ChatRequestBody {
@@ -145,7 +95,14 @@ export async function POST(request: NextRequest) {
         // Save user message (confirmation)
         const { message: savedUserMessage } = await saveChatMessage(conversationId, 'user', message);
 
+        // ดึง history เพื่อให้ AI ตอบต่อเนื่อง
+        const { messages: histMsgs } = await getChatMessages(conversationId, 20);
+        const confirmHistory = histMsgs
+          .filter(m => m.id !== savedUserMessage?.id)
+          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
         let aiResponse: string;
+        let actionContext: string | null = null; // context ให้ AI generate response
         const typeMap: Record<string, string> = {
           create_event: 'นัดหมาย',
           create_task: 'งาน',
@@ -171,13 +128,11 @@ export async function POST(request: NextRequest) {
           if (success) {
             await markCommandExecuted(pendingMsg.id);
             const checklistCount = pendingCommand.checklist_items?.length || 0;
-            if (checklistCount > 0) {
-              aiResponse = successMsg(typeName, pendingCommand.title) + ` (พร้อม checklist ${checklistCount} รายการ)`;
-            } else {
-              aiResponse = successMsg(typeName, pendingCommand.title);
-            }
+            const checklistNote = checklistCount > 0 ? ` พร้อม checklist ${checklistCount} รายการ` : '';
+            actionContext = `สร้าง${typeName} "${pendingCommand.title}" สำเร็จแล้ว${checklistNote}`;
+            aiResponse = ''; // จะ generate ด้วย AI ข้างล่าง
           } else {
-            aiResponse = `ขอโทษค่ะ ไม่สามารถสร้าง${typeName}ได้: ${error}`;
+            aiResponse = `ขอโทษนะ สร้าง${typeName}ไม่ได้: ${error}`;
           }
         } else if (pendingCommand?.type === 'create_task') {
           const { success, error } = await createTask({
@@ -191,7 +146,8 @@ export async function POST(request: NextRequest) {
 
           if (success) {
             await markCommandExecuted(pendingMsg.id);
-            aiResponse = successMsg(typeName, pendingCommand.title);
+            actionContext = `สร้าง${typeName} "${pendingCommand.title}" สำเร็จแล้ว`;
+            aiResponse = '';
           } else {
             aiResponse = `ขอโทษนะ สร้าง${typeName}ไม่ได้: ${error}`;
           }
@@ -212,7 +168,8 @@ export async function POST(request: NextRequest) {
               ? 'ทุกวัน'
               : (pendingCommand.days_of_week || []).map((d: number) => DAYS_TH[d]).join(' ');
             const timeStr = pendingCommand.routine_time || '09:00';
-            aiResponse = successMsg('กิจวัตร', pendingCommand.title, `${daysLabel} เวลา ${timeStr} น.`);
+            actionContext = `สร้างกิจวัตร "${pendingCommand.title}" ${daysLabel} เวลา ${timeStr} น. สำเร็จแล้ว`;
+            aiResponse = '';
           } else {
             aiResponse = `ขอโทษนะ สร้างกิจวัตรไม่ได้: ${error}`;
           }
@@ -231,7 +188,8 @@ export async function POST(request: NextRequest) {
             await markCommandExecuted(pendingMsg.id);
             const timeStr = pendingCommand.routine_time || '09:00';
             const dayLabel = dayOfMonth === 32 ? 'สิ้นเดือน' : `วันที่ ${dayOfMonth}`;
-            aiResponse = successMsg('กิจวัตรรายเดือน', pendingCommand.title, `${dayLabel} เวลา ${timeStr} น.`);
+            actionContext = `สร้างกิจวัตรรายเดือน "${pendingCommand.title}" ทุก${dayLabel} เวลา ${timeStr} น. สำเร็จแล้ว`;
+            aiResponse = '';
           } else {
             aiResponse = `ขอโทษนะ สร้างกิจวัตรรายเดือนไม่ได้: ${error}`;
           }
@@ -244,7 +202,8 @@ export async function POST(request: NextRequest) {
 
           if (success) {
             await markCommandExecuted(pendingMsg.id);
-            aiResponse = successMsg('บันทึก', pendingCommand.title);
+            actionContext = `บันทึก "${pendingCommand.title}" สำเร็จแล้ว`;
+            aiResponse = '';
           } else {
             aiResponse = `ขอโทษนะ บันทึกไม่ได้: ${error}`;
           }
@@ -302,9 +261,11 @@ export async function POST(request: NextRequest) {
           if (monthlyRoutinesResult.count > 0) parts.push(`กิจวัตรรายเดือน ${monthlyRoutinesResult.count} รายการ`);
 
           if (totalDeleted > 0) {
-            aiResponse = `ลบเรียบร้อยแล้วนะ ✅ (${parts.join(', ')})\n\nอยากสร้างอะไรใหม่ก็บอกได้เลย`;
+            actionContext = `ลบรายการสำเร็จแล้ว รวม ${totalDeleted} รายการ: ${parts.join(', ')}`;
+            aiResponse = '';
           } else {
-            aiResponse = 'ไม่มีอะไรให้ลบแล้วนะ ว่างเปล่าเลย 😊';
+            actionContext = 'ไม่มีรายการอะไรให้ลบ ว่างเปล่า';
+            aiResponse = '';
           }
         } else if (pendingCommand?.type === 'edit_event') {
           const targetId = pendingCommand.targetId || pendingCommand.targetEventId;
@@ -318,7 +279,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await updateEvent(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = editMsg('นัดหมาย');
+              actionContext = `แก้ไขนัดหมายสำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ แก้ไขนัดหมายไม่ได้: ${error}`;
             }
@@ -338,7 +300,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await updateTask(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = editMsg('งาน');
+              actionContext = `แก้ไขงานสำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ แก้ไขงานไม่ได้: ${error}`;
             }
@@ -355,7 +318,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await updateNote(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = editMsg('บันทึก');
+              actionContext = `แก้ไขบันทึกสำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ แก้ไขบันทึกไม่ได้: ${error}`;
             }
@@ -374,7 +338,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await updateRoutine(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = editMsg('กิจวัตร');
+              actionContext = `แก้ไขกิจวัตรสำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ แก้ไขกิจวัตรไม่ได้: ${error}`;
             }
@@ -393,7 +358,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await updateMonthlyRoutine(targetId, updates);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = editMsg('กิจวัตรรายเดือน');
+              actionContext = `แก้ไขกิจวัตรรายเดือนสำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ แก้ไขกิจวัตรรายเดือนไม่ได้: ${error}`;
             }
@@ -406,7 +372,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await deleteEvent(targetId);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = deleteMsg('นัดหมาย', pendingCommand.title);
+              actionContext = `ลบนัดหมาย "${pendingCommand.title}" สำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ ลบนัดหมายไม่ได้: ${error}`;
             }
@@ -419,7 +386,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await deleteTask(targetId);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = deleteMsg('งาน', pendingCommand.title);
+              actionContext = `ลบงาน "${pendingCommand.title}" สำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ ลบงานไม่ได้: ${error}`;
             }
@@ -432,7 +400,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await deleteNote(targetId);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = deleteMsg('บันทึก', pendingCommand.title);
+              actionContext = `ลบบันทึก "${pendingCommand.title}" สำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ ลบบันทึกไม่ได้: ${error}`;
             }
@@ -445,7 +414,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await deleteRoutine(targetId);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = deleteMsg('กิจวัตร', pendingCommand.title);
+              actionContext = `ลบกิจวัตร "${pendingCommand.title}" สำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ ลบกิจวัตรไม่ได้: ${error}`;
             }
@@ -458,7 +428,8 @@ export async function POST(request: NextRequest) {
             const { success, error } = await deleteMonthlyRoutine(targetId);
             if (success) {
               await markCommandExecuted(pendingMsg.id);
-              aiResponse = deleteMsg('กิจวัตรรายเดือน', pendingCommand.title);
+              actionContext = `ลบกิจวัตรรายเดือน "${pendingCommand.title}" สำเร็จแล้ว`;
+              aiResponse = '';
             } else {
               aiResponse = `ขอโทษนะ ลบกิจวัตรรายเดือนไม่ได้: ${error}`;
             }
@@ -467,7 +438,17 @@ export async function POST(request: NextRequest) {
           }
         } else {
           await markCommandExecuted(pendingMsg.id);
-          aiResponse = successMsg('บันทึก', pendingCommand?.title || 'รายการ');
+          actionContext = `ดำเนินการ "${pendingCommand?.title || 'รายการ'}" สำเร็จแล้ว`;
+          aiResponse = '';
+        }
+
+        // ถ้ามี actionContext → ให้ AI generate response เอง
+        if (actionContext && !aiResponse) {
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: ${actionContext}] — user เพิ่งยืนยันคำสั่ง ระบบทำเสร็จแล้ว แจ้ง user สั้นๆ`,
+            message,
+            confirmHistory
+          );
         }
 
         // Save AI response
@@ -486,7 +467,19 @@ export async function POST(request: NextRequest) {
         // Save user message (rejection)
         const { message: savedUserMessage } = await saveChatMessage(conversationId, 'user', message);
 
-        const aiResponse = pick(REJECT_RESPONSES);
+        // ดึง history เพื่อให้ AI ตอบต่อเนื่อง
+        const { messages: rejectHistMsgs } = await getChatMessages(conversationId, 20);
+        const rejectHistory = rejectHistMsgs
+          .filter(m => m.id !== savedUserMessage?.id)
+          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+        const pendingTitle = pendingMetadata.command?.title || 'คำสั่ง';
+        const pendingType = pendingMetadata.command?.type || '';
+        const aiResponse = await generateActionResponse(
+          `[สถานะระบบ: user ยกเลิกคำสั่ง${pendingType ? ` (${pendingType})` : ''} "${pendingTitle}"] — user ไม่ต้องการทำต่อ แจ้ง user สั้นๆ`,
+          message,
+          rejectHistory
+        );
 
         // Save AI response
         const { message: savedAIMessage } = await saveChatMessage(conversationId, 'assistant', aiResponse);
@@ -497,6 +490,13 @@ export async function POST(request: NextRequest) {
           aiMessage: savedAIMessage
         });
       }
+    }
+
+    // === ถ้ามี pending command แต่ user ไม่ได้ตอบ ใช่/ไม่ → ยกเลิก pending แล้ว process ข้อความใหม่ ===
+    if (pendingMsg && confirmation === 'none') {
+      // User ไม่ได้ confirm/reject แต่พิมพ์อย่างอื่นมา → ยกเลิก pending command เดิม
+      await markCommandRejected(pendingMsg.id);
+      console.log('[CHAT DEBUG] Pending command auto-rejected — user sent new message instead of confirm/reject');
     }
 
     // === Step 0.5: ตรวจจับว่าผู้ใช้ตอบตัวเลขเลือก clarify choice ===
@@ -525,40 +525,128 @@ export async function POST(request: NextRequest) {
     }
 
     // === Step 1: ใช้ AI วิเคราะห์ intent ของข้อความ ===
+    // ถ้าข้อความก่อนหน้าเป็น clarify → รวม context เพื่อให้ AI เข้าใจว่าตอบอะไร
+    let intentMessage = resolvedMessage;
+    {
+      const { messages: recentMsgs } = await getChatMessages(conversationId, 10);
+      const sorted = recentMsgs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      // นับ clarify ติดต่อกัน (assistant ถามคำถาม → user ตอบ = 1 รอบ)
+      // ถ้าเกิน 3 รอบ ไม่รวม context (ป้องกัน loop)
+      let clarifyCount = 0;
+      for (const m of sorted) {
+        if (m.role === 'assistant') {
+          const text = m.content.trim();
+          const isQuestion = /[?？]$/.test(text) || /คะ\??$|ครับ\??$|ค่ะ\??$/.test(text);
+          if (isQuestion) clarifyCount++;
+          else break;
+        }
+        // ข้าม user messages เพื่อนับ assistant ย้อนหลัง
+      }
+
+      const lastAssistant = sorted.find(m => m.role === 'assistant');
+      const lastUser = sorted.find(m => m.role === 'user');
+
+      if (clarifyCount >= 3) {
+        console.log('[CHAT DEBUG] Clarify loop limit (3) → skip context merge, treat as fresh');
+      } else if (lastAssistant && lastUser && lastAssistant.created_at > lastUser.created_at) {
+        // เช็คว่า assistant จบด้วยคำถาม → อาจเป็น clarify follow-up
+        const assistantText = lastAssistant.content.trim();
+        const endsWithQuestion = /[?？]$/.test(assistantText)
+          || /คะ\??$|ครับ\??$|ค่ะ\??$|ไหม\??$|บ้าง\??$|เท่าไหร่\??$|อะไร\??$/.test(assistantText);
+
+        if (endsWithQuestion) {
+          // ตรวจว่า user ตอบข้อมูลเพิ่มจริง หรือเปลี่ยนเรื่อง/ยกเลิก
+          const userReply = resolvedMessage.trim().toLowerCase();
+          const isCancelling = /ช่างเถอะ|ไม่เอา|ยกเลิก|เปลี่ยน|ไม่ต้อง|ไม่แล้ว|ลืมไป|ไม่ใช่|skip|cancel/.test(userReply);
+          const isChangingTopic = /สวัสดี|เหนื่อย|555|ขอบคุณ|ดีใจ|เบื่อ|เศร้า|หิว|ง่วง|ทำไรดี/.test(userReply);
+          const isNewCommand = /สร้าง|ลบ|แก้ไข|มีนัด|ดูงาน|ซื้อ|จำไว้/.test(userReply);
+
+          if (isCancelling || isChangingTopic || isNewCommand) {
+            // ไม่รวม context — ปล่อยให้ AI วิเคราะห์ข้อความใหม่ตามปกติ
+            console.log('[CHAT DEBUG] User changed topic or cancelled → skip context merge');
+          } else {
+            // น่าจะเป็นคำตอบต่อจาก clarify → รวม context
+            intentMessage = `${lastUser.content} ${resolvedMessage}`;
+            console.log('[CHAT DEBUG] Combined clarify context:', intentMessage);
+          }
+        }
+      }
+    }
+
     let intent: AnalyzedIntent;
     try {
-      intent = await analyzeIntent(resolvedMessage);
+      intent = await analyzeIntent(intentMessage);
     } catch {
       intent = { intent: 'chat', raw: resolvedMessage };
     }
 
     console.log('[CHAT DEBUG] message:', message);
-    console.log('[CHAT DEBUG] intent before override:', intent.intent, 'date:', intent.date);
+    console.log('[CHAT DEBUG] intent:', intent.intent, 'date:', intent.date, 'time:', intent.time);
 
-    // Safety net: override intent ถ้า keyword ชัดเจน แต่ Gemini detect ผิด
-    const { isQueryCommand: isQuery, isDeleteAllCommand: isDelete, isEditCommand: isEdit, isRoutineCommand: isRoutine, isMonthlyRoutineCommand: isMonthly } = await import('@/lib/ai/keyword-parser');
-    if (intent.intent !== 'create_monthly_routine' && isMonthly(resolvedMessage)) {
-      console.log('[CHAT DEBUG] Override to create_monthly_routine');
-      intent = { ...intent, intent: 'create_monthly_routine' };
-    } else if (intent.intent !== 'create_routine' && intent.intent !== 'create_monthly_routine' && isRoutine(resolvedMessage)) {
-      console.log('[CHAT DEBUG] Override to create_routine');
-      intent = { ...intent, intent: 'create_routine' };
-    } else if (intent.intent !== 'query' && isQuery(resolvedMessage)) {
-      console.log('[CHAT DEBUG] Override to query');
-      intent = { ...intent, intent: 'query' };
-      const pd = parseThaiDate(resolvedMessage);
-      if (pd.date && !intent.date) {
-        intent.date = pd.date;
-      }
-    } else if (intent.intent !== 'delete_all' && isDelete(resolvedMessage)) {
-      console.log('[CHAT DEBUG] Override to delete_all');
-      intent = { ...intent, intent: 'delete_all' };
-    } else if (intent.intent !== 'edit_event' && isEdit(resolvedMessage)) {
-      console.log('[CHAT DEBUG] Override to edit_event');
-      intent = { ...intent, intent: 'edit_event' };
+    // === Safety net: validate + บังคับ clarify ถ้าข้อมูลไม่ครบหรือมั่ว ===
+    // ตรวจ date/time format ที่ AI ส่งมา — ถ้าไม่ valid ถือว่าไม่มี
+    if (intent.date && !/^\d{4}-\d{2}-\d{2}$/.test(intent.date)) {
+      console.log('[CHAT DEBUG] Invalid date format:', intent.date, '→ remove');
+      intent.date = undefined;
+    }
+    if (intent.time && !/^\d{2}:\d{2}$/.test(intent.time)) {
+      console.log('[CHAT DEBUG] Invalid time format:', intent.time, '→ remove');
+      intent.time = undefined;
+    }
+    if (intent.routine_time && !/^\d{2}:\d{2}$/.test(intent.routine_time)) {
+      console.log('[CHAT DEBUG] Invalid routine_time format:', intent.routine_time, '→ remove');
+      intent.routine_time = undefined;
     }
 
-    console.log('[CHAT DEBUG] intent after override:', intent.intent);
+    // ตรวจวันที่ผ่านไปแล้ว — ถ้า date < วันนี้ → clarify ถามใหม่
+    if (intent.date && /^\d{4}-\d{2}-\d{2}$/.test(intent.date)) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const intentDate = new Date(intent.date + 'T00:00:00');
+      if (intentDate < today) {
+        console.log('[CHAT DEBUG] Date is in the past:', intent.date, '→ force clarify');
+        const titleHint = intent.title ? `"${intent.title}" ` : '';
+        intent = {
+          ...intent,
+          intent: 'clarify',
+          clarifyMessage: `${titleHint}วันที่ ${intent.date} ผ่านไปแล้วนะคะ ต้องการวันไหนแทนคะ?`,
+          choices: [],
+        };
+      }
+    }
+
+    if (intent.intent === 'create_event' && (!intent.date || !intent.time)) {
+      const missing: string[] = [];
+      if (!intent.date) missing.push('วันที่');
+      if (!intent.time) missing.push('เวลา');
+      console.log('[CHAT DEBUG] Missing fields for create_event:', missing.join(', '), '→ force clarify');
+      const titleHint = intent.title ? `เข้าใจว่าอยาก${intent.title} ` : '';
+      intent = {
+        ...intent,
+        intent: 'clarify',
+        clarifyMessage: `${titleHint}ขอทราบ${missing.join('และ')}ด้วยนะคะ`,
+        choices: [],
+      };
+    } else if (intent.intent === 'create_routine' && !intent.routine_time && !intent.time) {
+      console.log('[CHAT DEBUG] Missing routine_time for create_routine → force clarify');
+      const titleHint = intent.title ? `"${intent.title}" ` : '';
+      intent = {
+        ...intent,
+        intent: 'clarify',
+        clarifyMessage: `อยากตั้งกิจวัตร ${titleHint}กี่โมงคะ?`,
+        choices: [],
+      };
+    } else if (intent.intent === 'create_monthly_routine' && !intent.day_of_month) {
+      console.log('[CHAT DEBUG] Missing day_of_month for create_monthly_routine → force clarify');
+      const titleHint = intent.title ? `"${intent.title}" ` : '';
+      intent = {
+        ...intent,
+        intent: 'clarify',
+        clarifyMessage: `อยากตั้งกิจวัตรรายเดือน ${titleHint}ทุกวันที่เท่าไหร่ของเดือนคะ?`,
+        choices: [],
+      };
+    }
 
     // Build metadata for user message
     let userMetadata: CommandMetadata = {
@@ -793,7 +881,7 @@ export async function POST(request: NextRequest) {
             .update({ metadata: userMetadata as unknown as Record<string, unknown> })
             .eq('id', savedUserMessage.id);
 
-          // สร้าง confirmation message
+          // สร้าง confirmation message ผ่าน AI
           const changeParts: string[] = [];
           if (intent.title) changeParts.push(`ชื่อเป็น "${intent.title}"`);
           if (intent.date) {
@@ -805,9 +893,17 @@ export async function POST(request: NextRequest) {
           const oldDate = matchedEvent.event_date ? (() => { const d = new Date(matchedEvent!.event_date!); return `${d.getDate()}/${d.getMonth() + 1}`; })() : '';
           const changeDesc = changeParts.length > 0 ? changeParts.join(', ') : 'ไม่มีการเปลี่ยนแปลง';
 
-          aiResponse = `ต้องการแก้ไขนัด "${matchedEvent.title}"${oldDate ? ` วันที่ ${oldDate}` : ''} → ${changeDesc} ใช่ไหมคะ?\n\n💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: user ต้องการแก้ไขนัด "${matchedEvent.title}"${oldDate ? ` วันที่ ${oldDate}` : ''} → ${changeDesc}] — ถาม user ยืนยันสั้นๆ ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+            message,
+            conversationHistory
+          );
         } else {
-          aiResponse = 'ไม่พบนัดหมายที่ตรงกับเงื่อนไขค่ะ 😊 ลองเช็คชื่อหรือวันที่อีกครั้งนะคะ';
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: ไม่พบนัดหมายที่ตรงกับเงื่อนไขที่ user พูดถึง] — แจ้ง user สั้นๆ แนะนำให้เช็คชื่อหรือวันที่`,
+            message,
+            conversationHistory
+          );
         }
       } else if (isCommand && intent.intent === 'delete_all') {
         // Delete command → ดึงรายการที่จะลบมาแสดงก่อน confirm
@@ -864,9 +960,17 @@ export async function POST(request: NextRequest) {
           }
           const filterDesc = descParts.length > 0 ? descParts.join(' ') : 'ทั้งหมด';
 
-          aiResponse = `⚠️ จะลบ${filterDesc} ${filteredCommands.length} รายการนี้:\n\n${commandsList}\n\nการลบจะย้อนกลับไม่ได้นะคะ\n\n💬 พิมพ์ "ใช่" เพื่อยืนยันลบ หรือ "ไม่" เพื่อยกเลิก`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: user ต้องการลบ${filterDesc} ${filteredCommands.length} รายการ:\n${commandsList}\nการลบจะย้อนกลับไม่ได้] — ถาม user ยืนยัน ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+            message,
+            conversationHistory
+          );
         } else {
-          aiResponse = 'ไม่พบรายการที่ตรงกับเงื่อนไขค่ะ 😊';
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: ไม่พบรายการที่ตรงกับเงื่อนไขที่ user ต้องการลบ] — แจ้ง user สั้นๆ`,
+            message,
+            conversationHistory
+          );
         }
       } else if (isCommand && intent.intent === 'create_routine') {
         // Routine → show details before confirming
@@ -878,22 +982,22 @@ export async function POST(request: NextRequest) {
         const timeStr = intent.routine_time || intent.time || '09:00';
         const remindMin = intent.remind_before_minutes ?? 10;
 
-        aiResponse = `ยืนยันสร้างกิจวัตร "${intent.title}" ไหมคะ?\n\n` +
-          `⏰ เวลา: ${timeStr} น.\n` +
-          `📅 วัน: ${daysLabel}\n` +
-          `🔔 เตือนก่อน: ${remindMin} นาที\n\n` +
-          `💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+        aiResponse = await generateActionResponse(
+          `[สถานะระบบ: user ต้องการสร้างกิจวัตร "${intent.title}" เวลา ${timeStr} น. ${daysLabel} เตือนก่อน ${remindMin} นาที] — สรุปรายละเอียดให้ user แล้วถามยืนยัน ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+          message,
+          conversationHistory
+        );
       } else if (isCommand && intent.intent === 'create_monthly_routine') {
         const dayOfMonth = intent.day_of_month || 1;
         const dayLabel = dayOfMonth === 32 ? 'สิ้นเดือน' : `วันที่ ${dayOfMonth}`;
         const timeStr = intent.routine_time || intent.time || '09:00';
         const remindMin = intent.remind_before_minutes ?? 10;
 
-        aiResponse = `ยืนยันสร้างกิจวัตรรายเดือน "${intent.title}" ไหมคะ?\n\n` +
-          `📅 ทุก${dayLabel} ของเดือน\n` +
-          `⏰ เวลา: ${timeStr} น.\n` +
-          `🔔 เตือนก่อน: ${remindMin} นาที\n\n` +
-          `💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+        aiResponse = await generateActionResponse(
+          `[สถานะระบบ: user ต้องการสร้างกิจวัตรรายเดือน "${intent.title}" ทุก${dayLabel} ของเดือน เวลา ${timeStr} น. เตือนก่อน ${remindMin} นาที] — สรุปรายละเอียดให้ user แล้วถามยืนยัน ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+          message,
+          conversationHistory
+        );
       } else if (isCommand && (intent.intent === 'edit_task' || intent.intent === 'edit_note' || intent.intent === 'edit_routine' || intent.intent === 'edit_monthly_routine')) {
         // Edit task/note/routine/monthly_routine → หารายการที่ match
         const editTarget = intent.editTarget;
@@ -935,9 +1039,17 @@ export async function POST(request: NextRequest) {
           if (intent.description) changeParts.push(`รายละเอียดเป็น "${intent.description}"`);
           const changeDesc = changeParts.length > 0 ? changeParts.join(', ') : '';
 
-          aiResponse = `ต้องการแก้ไข${typeName} "${matched.title}" → ${changeDesc} ใช่ไหมคะ?\n\n💬 พิมพ์ "ใช่" เพื่อยืนยัน หรือ "ไม่" เพื่อยกเลิก`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: user ต้องการแก้ไข${typeName} "${matched.title}" → ${changeDesc}] — ถาม user ยืนยันสั้นๆ ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+            message,
+            conversationHistory
+          );
         } else {
-          aiResponse = `ไม่พบ${typeName}ที่ชื่อ "${keyword}" ค่ะ 😊 ลองเช็คชื่ออีกครั้งนะคะ`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: ไม่พบ${typeName}ที่ชื่อ "${keyword}"] — แจ้ง user สั้นๆ แนะนำให้เช็คชื่อ`,
+            message,
+            conversationHistory
+          );
         }
       } else if (isCommand && (intent.intent === 'delete_event' || intent.intent === 'delete_task' || intent.intent === 'delete_note' || intent.intent === 'delete_routine' || intent.intent === 'delete_monthly_routine')) {
         // Delete specific item → หารายการที่ match
@@ -981,9 +1093,17 @@ export async function POST(request: NextRequest) {
             .update({ metadata: userMetadata as unknown as Record<string, unknown> })
             .eq('id', savedUserMessage.id);
 
-          aiResponse = `⚠️ ต้องการลบ${typeName} "${matched.title}" ใช่ไหมคะ?\n\nการลบจะย้อนกลับไม่ได้นะคะ\n\n💬 พิมพ์ "ใช่" เพื่อยืนยันลบ หรือ "ไม่" เพื่อยกเลิก`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: user ต้องการลบ${typeName} "${matched.title}" — การลบจะย้อนกลับไม่ได้] — ถาม user ยืนยัน ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+            message,
+            conversationHistory
+          );
         } else {
-          aiResponse = `ไม่พบ${typeName}ที่ชื่อ "${keyword}" ค่ะ 😊 ลองเช็คชื่ออีกครั้งนะคะ`;
+          aiResponse = await generateActionResponse(
+            `[สถานะระบบ: ไม่พบ${typeName}ที่ชื่อ "${keyword}"] — แจ้ง user สั้นๆ แนะนำให้เช็คชื่อ`,
+            message,
+            conversationHistory
+          );
         }
       } else if (intent.intent === 'clarify') {
         // AI ไม่แน่ใจ → ส่ง choices ให้ user เลือก
@@ -993,10 +1113,52 @@ export async function POST(request: NextRequest) {
         }
         aiResponse = clarifyMsg;
       } else if (isCommand) {
-        // Create command → ask for confirmation
-        aiResponse = generateConfirmationPrompt(intent.intent, intent.title || message.slice(0, 50));
+        // === ตรวจซ้ำซ้อน: ถ้ามีรายการเดิมอยู่แล้ว → แจ้ง user ===
+        let duplicateWarning = '';
+        if (intent.intent === 'create_event' && intent.title && intent.date) {
+          const { events } = await getUserEvents();
+          const dup = events?.find(e =>
+            e.title.toLowerCase().includes((intent.title || '').toLowerCase()) &&
+            e.event_date === intent.date
+          );
+          if (dup) {
+            duplicateWarning = ` ⚠️ มีนัด "${dup.title}" วันเดียวกันอยู่แล้ว`;
+          }
+        } else if (intent.intent === 'create_routine' && intent.title) {
+          const { routines } = await getUserRoutines();
+          const dup = routines?.find(r =>
+            r.title.toLowerCase().includes((intent.title || '').toLowerCase())
+          );
+          if (dup) {
+            duplicateWarning = ` ⚠️ มีกิจวัตร "${dup.title}" อยู่แล้ว`;
+          }
+        }
+
+        // Create command → ask for confirmation via AI
+        const createTypeMap: Record<string, string> = {
+          create_event: 'นัดหมาย', create_task: 'งาน', create_note: 'บันทึก',
+          create_routine: 'กิจวัตร', create_monthly_routine: 'กิจวัตรรายเดือน',
+        };
+        const createTypeName = createTypeMap[intent.intent] || 'รายการ';
+        const createTitle = intent.title || message.slice(0, 50);
+        const detailParts: string[] = [];
+        if (intent.date) detailParts.push(`วันที่ ${intent.date}`);
+        if (intent.time) detailParts.push(`เวลา ${intent.time} น.`);
+        if (intent.description) detailParts.push(`รายละเอียด: ${intent.description}`);
+        const detailStr = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
+        aiResponse = await generateActionResponse(
+          `[สถานะระบบ: user ต้องการสร้าง${createTypeName} "${createTitle}"${detailStr}${duplicateWarning}] — สรุปสิ่งที่จะสร้างให้ user${duplicateWarning ? ' แจ้งว่ามีรายการคล้ายกันอยู่แล้ว' : ''} แล้วถามยืนยัน ลงท้ายว่า พิมพ์ "ใช่" หรือ "ไม่"`,
+          message,
+          conversationHistory
+        );
       } else if (customQueryResponse) {
-        aiResponse = customQueryResponse;
+        // Query → ส่งข้อมูลดิบให้ AI สรุปเป็นภาษาพูด
+        aiResponse = await generateActionResponse(
+          `[ข้อมูลจากระบบ:\n${customQueryResponse}] — สรุปข้อมูลนี้ให้ user เป็นภาษาพูดธรรมชาติ ไม่ต้อง copy ทั้งหมด`,
+          message,
+          conversationHistory
+        );
       } else {
         // Normal chat or search → call AI with context
 
@@ -1025,14 +1187,7 @@ export async function POST(request: NextRequest) {
           emotionHint
         );
 
-        // 5. Add empathetic prefix if needed
-        if (emotion === 'stressed' || emotion === 'happy') {
-          const prefix = getEmpatheticPrefix(emotion);
-          const lowerResponse = aiResponse.toLowerCase();
-          if (!lowerResponse.includes('เข้าใจ') && !lowerResponse.includes('ดีใจ') && !lowerResponse.includes('ยินดี')) {
-            aiResponse = prefix + aiResponse;
-          }
-        }
+        // AI ได้รับ emotion hint ผ่าน system prompt อยู่แล้ว ไม่ต้อง hardcode prefix
       }
     } catch (aiError) {
       console.error('AI generation error:', aiError);

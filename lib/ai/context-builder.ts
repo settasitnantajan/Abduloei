@@ -142,4 +142,4 @@ export async function buildAIContext(
 }
 
 // Re-export utility functions from context-utils
-export { contextToPrompt, detectUserEmotion, getEmpatheticPrefix } from './context-utils';
+export { contextToPrompt, detectUserEmotion } from './context-utils';

@@ -107,21 +107,3 @@ export function detectUserEmotion(message: string): {
 
   return { emotion: 'neutral', confidence: 0.5 };
 }
-
-/**
- * สร้าง empathy prefix ตาม emotion
- */
-export function getEmpatheticPrefix(emotion: 'stressed' | 'happy' | 'confused' | 'seeking_advice' | 'neutral'): string {
-  switch (emotion) {
-    case 'stressed':
-      return 'เข้าใจเลยค่ะว่าตอนนี้รู้สึกเครียด ';
-    case 'happy':
-      return 'ดีใจด้วยนะคะ! ';
-    case 'confused':
-      return 'ให้ช่วยอธิบายให้เข้าใจง่ายๆ นะคะ ';
-    case 'seeking_advice':
-      return 'เข้าใจค่ะ ';
-    default:
-      return '';
-  }
-}
