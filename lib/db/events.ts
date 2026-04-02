@@ -30,6 +30,7 @@ export async function createEventWithChecklist(
         location: data.location,
         priority: data.priority || 'medium',
         status: 'pending',
+        assigned_member_id: data.assigned_member_id || null,
         source_message: data.source_message,
       })
       .select()

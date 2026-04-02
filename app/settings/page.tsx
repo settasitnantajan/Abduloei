@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import LineLinkingCard from '@/components/settings/LineLinkingCard';
+import HomeMembersCard from '@/components/settings/HomeMembersCard';
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
 
         <div className="space-y-4">
           <LineLinkingCard />
+          <HomeMembersCard />
         </div>
       </div>
     </div>

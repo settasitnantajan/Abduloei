@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { adminClient } from '@/lib/supabase/admin'
 import { sendEventReminderToLine, sendRoutineReminderToLine, sendTaskReminderToLine, sendMonthlyRoutineReminderToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking } from '@/lib/line/notifications'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
+import { getMemberLineId } from '@/lib/db/home-members'
 
 function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: number; message?: string } {
   const cronSecret = process.env.CRON_SECRET
@@ -25,6 +26,22 @@ function verifyCronAuth(authHeader: string | null): { ok: boolean; status?: numb
     return { ok: false, status: 401, message: 'Unauthorized' }
   }
   return { ok: true }
+}
+
+// เช็คว่าควรส่งไป LINE นี้ไหม ตาม assigned_member_id
+// ถ้าไม่มี assigned → ส่งทุกคน (true)
+// ถ้ามี assigned → ส่งเฉพาะ LINE ของ member นั้น
+const memberLineCache = new Map<string, string | null>()
+async function shouldSendTo(assignedMemberId: string | null, lineUserId: string): Promise<boolean> {
+  if (!assignedMemberId) return true // ไม่ได้ assign → ส่งทุกคน
+
+  if (!memberLineCache.has(assignedMemberId)) {
+    const memberLineId = await getMemberLineId(assignedMemberId)
+    memberLineCache.set(assignedMemberId, memberLineId)
+  }
+  const memberLineId = memberLineCache.get(assignedMemberId)
+  if (!memberLineId) return true // member ไม่มี LINE → ส่งทุกคน (fallback)
+  return memberLineId === lineUserId // ส่งเฉพาะ LINE ที่ตรงกับ member
 }
 
 export async function GET(request: Request) {
@@ -57,7 +74,7 @@ export async function GET(request: Request) {
 
       let query1d = adminClient
         .from('events')
-        .select('id, user_id, title, description, event_date, event_time, location')
+        .select('id, user_id, title, description, event_date, event_time, location, assigned_member_id')
         .eq('reminder_1d_sent', false)
         .gte('event_date', in23h.toISOString().split('T')[0])
         .lte('event_date', in25h.toISOString().split('T')[0])
@@ -78,6 +95,7 @@ export async function GET(request: Request) {
           const diffHours = diffMs / (1000 * 60 * 60)
 
           if (diffHours >= 23 && diffHours <= 25) {
+            if (!(await shouldSendTo(event.assigned_member_id, lineUserId))) continue
             const result = await sendEventReminderToLine(lineUserId, event, 'พรุ่งนี้มีนัด!')
             if (result.success) {
               await adminClient
@@ -96,7 +114,7 @@ export async function GET(request: Request) {
 
       let query1h = adminClient
         .from('events')
-        .select('id, user_id, title, description, event_date, event_time, location')
+        .select('id, user_id, title, description, event_date, event_time, location, assigned_member_id')
         .eq('reminder_1h_sent', false)
         .gte('event_date', in55m.toISOString().split('T')[0])
         .lte('event_date', in65m.toISOString().split('T')[0])
@@ -119,6 +137,7 @@ export async function GET(request: Request) {
           const diffMinutes = diffMs / (1000 * 60)
 
           if (diffMinutes >= 45 && diffMinutes <= 75) {
+            if (!(await shouldSendTo(event.assigned_member_id, lineUserId))) continue
             const result = await sendEventReminderToLine(lineUserId, event, 'อีก 1 ชั่วโมง!')
             if (result.success) {
               await adminClient
@@ -134,7 +153,7 @@ export async function GET(request: Request) {
       // --- เตือนงาน (Tasks) ก่อน 1 วัน (22-26 ชม.) ---
       let taskQuery1d = adminClient
         .from('tasks')
-        .select('id, user_id, title, description, due_date, due_time')
+        .select('id, user_id, title, description, due_date, due_time, assigned_member_id')
         .eq('status', 'pending')
         .eq('reminder_1d_sent', false)
         .not('due_date', 'is', null)
@@ -153,6 +172,7 @@ export async function GET(request: Request) {
           const diffHours = diffMs / (1000 * 60 * 60)
 
           if (diffHours >= 23 && diffHours <= 25) {
+            if (!(await shouldSendTo(task.assigned_member_id, lineUserId))) continue
             const result = await sendTaskReminderToLine(lineUserId, task, 'พรุ่งนี้มีงาน!')
             if (result.success) {
               await adminClient
@@ -168,7 +188,7 @@ export async function GET(request: Request) {
       // --- เตือนงาน (Tasks) ก่อน 1 ชม. (40-80 นาที) ---
       let taskQuery1h = adminClient
         .from('tasks')
-        .select('id, user_id, title, description, due_date, due_time')
+        .select('id, user_id, title, description, due_date, due_time, assigned_member_id')
         .eq('status', 'pending')
         .eq('reminder_1h_sent', false)
         .not('due_date', 'is', null)
@@ -190,6 +210,7 @@ export async function GET(request: Request) {
           const diffMinutes = diffMs / (1000 * 60)
 
           if (diffMinutes >= 45 && diffMinutes <= 75) {
+            if (!(await shouldSendTo(task.assigned_member_id, lineUserId))) continue
             const result = await sendTaskReminderToLine(lineUserId, task, 'อีก 1 ชั่วโมง!')
             if (result.success) {
               await adminClient
@@ -209,7 +230,7 @@ export async function GET(request: Request) {
 
       let routineQuery = adminClient
         .from('routines')
-        .select('id, user_id, title, description, routine_time, days_of_week, remind_before_minutes, last_reminded_date')
+        .select('id, user_id, title, description, routine_time, days_of_week, remind_before_minutes, last_reminded_date, assigned_member_id')
         .eq('is_active', true)
 
       if (userFilter) routineQuery = routineQuery.eq('user_id', userId)
@@ -231,6 +252,7 @@ export async function GET(request: Request) {
           const diffMinutes = diffMs / (1000 * 60)
 
           if (diffMinutes >= -2 && diffMinutes <= 15) {
+            if (!(await shouldSendTo(routine.assigned_member_id, lineUserId))) continue
             const result = await sendRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
               // อัพเดท last_reminded_date ทันทีเพื่อป้องกัน race condition
@@ -254,7 +276,7 @@ export async function GET(request: Request) {
 
       let monthlyQuery = adminClient
         .from('monthly_routines')
-        .select('id, user_id, title, description, routine_time, day_of_month, remind_before_minutes, last_reminded_date')
+        .select('id, user_id, title, description, routine_time, day_of_month, remind_before_minutes, last_reminded_date, assigned_member_id')
         .eq('is_active', true)
         .in('day_of_month', matchDays)
 
@@ -276,6 +298,7 @@ export async function GET(request: Request) {
           const diffMinutes = diffMs / (1000 * 60)
 
           if (diffMinutes >= -2 && diffMinutes <= 15) {
+            if (!(await shouldSendTo(routine.assigned_member_id, lineUserId))) continue
             const result = await sendMonthlyRoutineReminderToLine(lineUserId, routine)
             if (result.success) {
               // อัพเดท last_reminded_date ทันทีเพื่อป้องกัน race condition

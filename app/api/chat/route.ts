@@ -13,6 +13,7 @@ import { buildAIContext, contextToPrompt, detectUserEmotion } from '@/lib/ai/con
 import { processMessageForMemories } from '@/lib/db/memories';
 import { searchWeb, formatSearchResults } from '@/lib/ai/web-searcher';
 import { analyzeIntent, AnalyzedIntent } from '@/lib/ai/intent-analyzer';
+import { findMemberByName } from '@/lib/db/home-members';
 import { parseThaiDate } from '@/lib/utils/thai-date-parser';
 
 export const runtime = 'nodejs';
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
             event_date: pendingCommand.date,
             event_time: pendingCommand.time,
             priority: pendingCommand.priority,
+            assigned_member_id: pendingCommand.assigned_member_id,
             checklist_items: pendingCommand.checklist_items,
             source_message: pendingMetadata.command?.raw || message,
           });
@@ -141,6 +143,7 @@ export async function POST(request: NextRequest) {
             due_date: pendingCommand.date,
             due_time: pendingCommand.time,
             priority: pendingCommand.priority,
+            assigned_member_id: pendingCommand.assigned_member_id,
             source_message: pendingMetadata.command?.raw || message,
           });
 
@@ -159,6 +162,7 @@ export async function POST(request: NextRequest) {
             routine_time: pendingCommand.routine_time || '09:00',
             days_of_week: pendingCommand.days_of_week || [0, 1, 2, 3, 4, 5, 6],
             remind_before_minutes: pendingCommand.remind_before_minutes ?? 10,
+            assigned_member_id: pendingCommand.assigned_member_id,
             source_message: pendingMetadata.command?.raw || message,
           });
 
@@ -181,6 +185,7 @@ export async function POST(request: NextRequest) {
             routine_time: pendingCommand.routine_time || '09:00',
             day_of_month: dayOfMonth,
             remind_before_minutes: pendingCommand.remind_before_minutes ?? 10,
+            assigned_member_id: pendingCommand.assigned_member_id,
             source_message: pendingMetadata.command?.raw || message,
           });
 
@@ -658,6 +663,17 @@ export async function POST(request: NextRequest) {
     const isCommand = !nonCommandIntents.includes(intent.intent);
 
     if (isCommand) {
+      // resolve assigned_to → assigned_member_id
+      let assignedMemberId: string | undefined;
+      let assignedMemberName: string | undefined;
+      if (intent.assigned_to && user) {
+        const member = await findMemberByName(user.id, intent.assigned_to);
+        if (member) {
+          assignedMemberId = member.id;
+          assignedMemberName = member.name;
+        }
+      }
+
       userMetadata = {
         command: {
           type: intent.intent as any,
@@ -673,6 +689,8 @@ export async function POST(request: NextRequest) {
           routine_time: intent.routine_time,
           days_of_week: intent.days_of_week,
           remind_before_minutes: intent.remind_before_minutes,
+          assigned_to: assignedMemberName || intent.assigned_to,
+          assigned_member_id: assignedMemberId,
           raw: message,
         },
         parsed: true,

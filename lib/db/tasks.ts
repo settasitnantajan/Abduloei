@@ -22,6 +22,7 @@ export async function createTask(
         due_time: data.due_time,
         priority: data.priority || 'medium',
         status: 'pending',
+        assigned_member_id: data.assigned_member_id || null,
         source_message: data.source_message,
       })
       .select()

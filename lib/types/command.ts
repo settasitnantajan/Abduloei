@@ -39,6 +39,8 @@ export interface ParsedCommand {
     titleKeyword?: string
     date?: string // วันที่เดิมของนัดที่จะแก้ไข (YYYY-MM-DD)
   }
+  assigned_to?: string // ชื่อสมาชิกที่จะ assign
+  assigned_member_id?: string // ID ของสมาชิก (resolved จาก assigned_to)
   targetEventId?: string // ID ของ event ที่จะแก้ไข (ใส่ตอน confirm)
   targetId?: string // ID ของรายการที่จะแก้ไข/ลบ (ใช้ร่วมกันทุกประเภท)
   raw: string // Original user message
