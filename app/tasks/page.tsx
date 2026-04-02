@@ -7,6 +7,7 @@ import DeleteButton from '@/components/shared/DeleteButton';
 import EditButton from '@/components/shared/EditButton';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
 import { updateTask } from '@/app/actions/tasks';
+import { getHomeMembers } from '@/app/actions/home-members';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -30,6 +31,11 @@ export default async function TasksPage() {
   }
 
   const { tasks, error: tasksError } = await getUserTasks();
+  const members = await getHomeMembers();
+  const memberOptions = [
+    { label: 'ทุกคน', value: '' },
+    ...members.map(m => ({ label: m.name, value: m.id }))
+  ];
 
   const pendingTasks = tasks?.filter(t => t.status === 'pending') || [];
   const completedTasks = tasks?.filter(t => t.status === 'completed') || [];
@@ -106,6 +112,7 @@ export default async function TasksPage() {
                                     { label: 'ไม่ด่วน', value: 'low' }, { label: 'ปกติ', value: 'medium' }, { label: 'ด่วน', value: 'high' },
                                   ]},
                                   { key: 'description', label: 'คำอธิบาย', type: 'textarea', value: task.description || '' },
+                                  { key: 'assigned_member_id', label: 'แจ้งเตือนใคร', type: 'select', value: (task as any).assigned_member_id || '', options: memberOptions },
                                 ]}
                               />
                               <DeleteButton onDelete={deleteTask} itemId={task.id} itemName={task.title} />

@@ -88,7 +88,7 @@ export async function getUserRoutines(): Promise<{ routines: Routine[]; error?: 
 
 export async function updateRoutine(
   routineId: string,
-  data: Partial<Pick<Routine, 'title' | 'description' | 'routine_time' | 'days_of_week' | 'remind_before_minutes'>>
+  data: Partial<Pick<Routine, 'title' | 'description' | 'routine_time' | 'days_of_week' | 'remind_before_minutes'>> & { assigned_member_id?: string | null }
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();

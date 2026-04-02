@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createTask } from '@/app/actions/tasks'
+import { getHomeMembers } from '@/app/actions/home-members'
 
 export default function CreateTaskModal() {
   const [open, setOpen] = useState(false)
@@ -17,6 +18,12 @@ export default function CreateTaskModal() {
   const [dueTime, setDueTime] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
   const [description, setDescription] = useState('')
+  const [assignedMemberId, setAssignedMemberId] = useState('')
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    if (open) getHomeMembers().then(m => setMembers(m.map(x => ({ id: x.id, name: x.name }))))
+  }, [open])
 
   function resetForm() {
     setTitle('')
@@ -24,6 +31,7 @@ export default function CreateTaskModal() {
     setDueTime('')
     setPriority('medium')
     setDescription('')
+    setAssignedMemberId('')
     setError('')
   }
 
@@ -38,6 +46,7 @@ export default function CreateTaskModal() {
         due_time: dueTime || undefined,
         priority,
         description: description.trim() || undefined,
+        assigned_member_id: assignedMemberId || undefined,
       })
 
       if (result.success) {
@@ -131,6 +140,20 @@ export default function CreateTaskModal() {
                   className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
+
+              {members.length > 0 && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">แจ้งเตือนใคร</label>
+                  <select
+                    value={assignedMemberId}
+                    onChange={e => setAssignedMemberId(e.target.value)}
+                    className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">ทุกคน</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+              )}
 
               <Button
                 type="submit"

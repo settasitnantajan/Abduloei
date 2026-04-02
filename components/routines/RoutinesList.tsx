@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Repeat, Plus, Clock, Trash2, Bell, X, Loader2, Pencil } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { createRoutine, toggleRoutine, deleteRoutine, updateRoutine } from '@/app/actions/routines';
+import { getHomeMembers } from '@/app/actions/home-members';
 import type { Routine } from '@/lib/db/routines';
 import type { CreateRoutineInput } from '@/lib/db/routines';
 
@@ -45,6 +46,12 @@ function CreateRoutineModal({ onClose, onCreated }: CreateModalProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [assignedMemberId, setAssignedMemberId] = useState('');
+
+  useEffect(() => {
+    getHomeMembers().then(m => setMembers(m.map(x => ({ id: x.id, name: x.name }))));
+  }, []);
 
   const toggleDay = (day: number) => {
     setSelectedDays((prev) =>
@@ -63,6 +70,7 @@ function CreateRoutineModal({ onClose, onCreated }: CreateModalProps) {
       routine_time: data.get('routine_time') as string,
       days_of_week: selectedDays,
       remind_before_minutes: Number(data.get('remind_before_minutes') || 10),
+      assigned_member_id: assignedMemberId || undefined,
     };
 
     const description = (data.get('description') as string).trim();
@@ -204,6 +212,21 @@ function CreateRoutineModal({ onClose, onCreated }: CreateModalProps) {
             </select>
           </div>
 
+          {/* แจ้งเตือนใคร */}
+          {members.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-300">แจ้งเตือนใคร</label>
+              <select
+                value={assignedMemberId}
+                onChange={e => setAssignedMemberId(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white text-sm focus:outline-none focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 transition-colors"
+              >
+                <option value="">ทุกคน</option>
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+
           {/* Error */}
           {error && (
             <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">
@@ -258,6 +281,8 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
   const [editTime, setEditTime] = useState(routine.routine_time?.slice(0, 5) || '09:00');
   const [editDays, setEditDays] = useState<number[]>(routine.days_of_week || [0,1,2,3,4,5,6]);
   const [editRemind, setEditRemind] = useState(routine.remind_before_minutes ?? 10);
+  const [editMemberId, setEditMemberId] = useState((routine as any).assigned_member_id || '');
+  const [editMembers, setEditMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const handleToggle = () => {
     startToggleTransition(async () => {
@@ -279,6 +304,8 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
     setEditTime(routine.routine_time?.slice(0, 5) || '09:00');
     setEditDays(routine.days_of_week || [0,1,2,3,4,5,6]);
     setEditRemind(routine.remind_before_minutes ?? 10);
+    setEditMemberId((routine as any).assigned_member_id || '');
+    getHomeMembers().then(m => setEditMembers(m.map(x => ({ id: x.id, name: x.name }))));
     setIsEditing(true);
   };
 
@@ -289,6 +316,7 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
         routine_time: editTime,
         days_of_week: editDays,
         remind_before_minutes: editRemind,
+        assigned_member_id: editMemberId || null,
       });
       setIsEditing(false);
       onRefresh();
@@ -433,6 +461,15 @@ function RoutineCard({ routine, onRefresh }: RoutineCardProps) {
                 <label className="block text-sm text-gray-400 mb-1">เตือนก่อน (นาที)</label>
                 <input type="number" value={editRemind} onChange={e => setEditRemind(Number(e.target.value))} min={0} max={120} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
               </div>
+              {editMembers.length > 0 && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">แจ้งเตือนใคร</label>
+                  <select value={editMemberId} onChange={e => setEditMemberId(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500">
+                    <option value="">ทุกคน</option>
+                    {editMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+              )}
               <button onClick={handleEditSave} disabled={isEditPending || !editTitle.trim()} className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2.5 font-medium disabled:opacity-50 flex items-center justify-center gap-2">
                 {isEditPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {isEditPending ? 'กำลังบันทึก...' : 'บันทึก'}
