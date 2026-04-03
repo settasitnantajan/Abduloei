@@ -36,7 +36,7 @@ export default async function NotesPage() {
         </div>
 
         {notesError || !notes || notes.length === 0 ? (
-          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-12 text-center">
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-6 md:p-12 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center">
                 <StickyNote className="w-10 h-10 text-amber-500" />
@@ -68,7 +68,7 @@ export default async function NotesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold text-white">{note.title}</h3>
+                      <h3 className="text-lg font-semibold text-white truncate">{note.title}</h3>
                       <EditButton
                         onEdit={editNote}
                         itemId={note.id}

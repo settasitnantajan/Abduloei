@@ -738,11 +738,12 @@ export async function POST(request: NextRequest) {
     if (intent.intent === 'query') {
       console.log('[CHAT DEBUG] Entering query block');
       // ดึงข้อมูลจาก events/tasks/notes/routines table โดยตรง
-      const [eventsResult, tasksResult, notesResult, routinesResult] = await Promise.all([
+      const [eventsResult, tasksResult, notesResult, routinesResult, monthlyRoutinesResult] = await Promise.all([
         getUserEvents(),
         getUserTasks(),
         getUserNotes(),
         getUserRoutines(),
+        getUserMonthlyRoutines(),
       ]);
 
       // ตรวจว่าถามเฉพาะประเภทไหน
@@ -751,7 +752,8 @@ export async function POST(request: NextRequest) {
       const askTask = /งาน|task|todo|ต้องทำ/.test(msgLower);
       const askNote = /บันทึก|โน้ต|note|เมโม|จด/.test(msgLower);
       const askRoutine = /กิจวัตร|routine|ประจำ|ทุกวัน/.test(msgLower);
-      const askAll = (!askEvent && !askTask && !askNote && !askRoutine) || /ทั้งหมด|ทุกอย่าง/.test(msgLower);
+      const askMonthly = /รายเดือน|ทุกเดือน|monthly|ของเดือน/.test(msgLower);
+      const askAll = (!askEvent && !askTask && !askNote && !askRoutine && !askMonthly) || /ทั้งหมด|ทุกอย่าง/.test(msgLower);
 
       // รวมรายการตามที่ถาม
       type QueryItem = { type: string; title: string; date?: string; time?: string };
@@ -789,6 +791,18 @@ export async function POST(request: NextRequest) {
               type: 'กิจวัตร',
               title: `${r.title} (${daysLabel})`,
               time: r.routine_time?.slice(0, 5),
+            });
+          }
+        }
+      }
+      if (askAll || askMonthly) {
+        if (monthlyRoutinesResult.routines) {
+          for (const mr of monthlyRoutinesResult.routines) {
+            const dayLabel = mr.day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${mr.day_of_month}`;
+            allItems.push({
+              type: 'กิจวัตรรายเดือน',
+              title: `${mr.title} (${dayLabel})`,
+              time: mr.routine_time?.slice(0, 5),
             });
           }
         }

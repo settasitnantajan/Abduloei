@@ -53,7 +53,7 @@ export default async function TasksPage() {
         </div>
 
         {tasksError || !tasks || tasks.length === 0 ? (
-          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-12 text-center">
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-6 md:p-12 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <CheckSquare className="w-10 h-10 text-blue-500" />
@@ -95,7 +95,7 @@ export default async function TasksPage() {
                           <Circle className="w-5 h-5 text-gray-500 mt-0.5 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-base font-medium text-white">{task.title}</h3>
+                              <h3 className="text-base font-medium text-white truncate">{task.title}</h3>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${priority.bg} ${priority.color} ${priority.border} border`}>
                                 {priority.label}
                               </span>

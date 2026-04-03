@@ -72,7 +72,7 @@ export default async function EventsPage() {
 
         {/* Events List or Empty State */}
         {eventsError || !events || events.length === 0 ? (
-          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-12 text-center">
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-6 md:p-12 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-20 h-20 rounded-full bg-[#00B900]/10 flex items-center justify-center">
                 <Calendar className="w-10 h-10 text-[#00B900]" />
@@ -110,9 +110,9 @@ export default async function EventsPage() {
                   {/* Header ของ Event */}
                   <div className="p-5">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-lg font-semibold text-white">{event.title}</h3>
+                          <h3 className="text-lg font-semibold text-white truncate">{event.title}</h3>
                           <EditButton
                             onEdit={editEvent}
                             itemId={event.id}

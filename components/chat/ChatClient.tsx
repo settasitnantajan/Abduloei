@@ -401,7 +401,7 @@ export default function ChatClient({ initialConversation, initialMessages, initi
 
       {/* Top buttons (fixed) */}
       {!isSearchOpen && (
-        <div className="fixed top-4 left-4 md:left-auto md:right-8 right-4 z-20 flex items-center gap-2">
+        <div className="fixed top-14 sm:top-4 left-4 md:left-auto md:right-8 right-4 z-20 flex items-center gap-2">
           {/* ปุ่มห้องแชท — ซ้ายบน mobile, ขวาบน desktop */}
           <button
             onClick={() => setShowRoomSidebar(true)}

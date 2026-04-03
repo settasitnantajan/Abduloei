@@ -80,7 +80,7 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
             <input name="description" type="text" placeholder="รายละเอียดเพิ่มเติม" className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white placeholder:text-gray-500 text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-300">ทุกวันที่ <span className="text-red-400">*</span></label>
               <select name="day_of_month" defaultValue="1" className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors">
@@ -233,7 +233,7 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
 
       {/* Edit Modal */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-[#333333]">
               <h2 className="text-lg font-semibold text-white">แก้ไขกิจวัตรรายเดือน</h2>
@@ -244,7 +244,7 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
                 <label className="block text-sm text-gray-400 mb-1">ชื่อ</label>
                 <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">ทุกวันที่</label>
                   <select value={editDay} onChange={e => setEditDay(Number(e.target.value))} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500">

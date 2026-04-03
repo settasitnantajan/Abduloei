@@ -70,7 +70,7 @@ export default function CreateTaskModal() {
       </Button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-[#333333]">
               <h2 className="text-lg font-semibold text-white">สร้างงานใหม่</h2>
@@ -79,7 +79,7 @@ export default function CreateTaskModal() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <form onSubmit={handleSubmit} className="p-4 pb-20 sm:pb-4 space-y-4">
               {error && (
                 <p className="text-red-400 text-sm bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
               )}
@@ -96,7 +96,7 @@ export default function CreateTaskModal() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">วันกำหนดส่ง</label>
                   <input
