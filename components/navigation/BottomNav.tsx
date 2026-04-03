@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Repeat,
   CalendarDays,
+  BarChart3,
   Settings,
 } from 'lucide-react';
 import { getUserEvents } from '@/app/actions/events';
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
   { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
   { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
+  { id: 'weekly-summary', label: 'รายสัปดาห์', icon: BarChart3, path: '/weekly-summary' },
   { id: 'settings', label: 'ตั้งค่า', icon: Settings, path: '/settings' },
 ];
 
