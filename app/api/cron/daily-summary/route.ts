@@ -45,8 +45,18 @@ export async function GET(request: Request) {
   try {
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 
-    for (const { user_id: userId, line_user_id: lineUserId } of linkedUsers) {
-      // เช็คว่าวันนี้ส่ง daily_summary ไปแล้วหรือยัง (DB-level dedup)
+    // Group LINE IDs by user_id
+    const userLineMap = new Map<string, string[]>()
+    for (const { user_id, line_user_id } of linkedUsers) {
+      const uid = user_id || '__env__'
+      if (!userLineMap.has(uid)) userLineMap.set(uid, [])
+      userLineMap.get(uid)!.push(line_user_id)
+    }
+
+    for (const [uid, lineIds] of userLineMap) {
+      const userId = uid === '__env__' ? undefined : uid
+
+      // DB-level dedup: เช็คว่าวันนี้ส่งไปแล้วหรือยัง
       if (userId) {
         const { data: existing } = await adminClient
           .from('notifications')
@@ -62,9 +72,12 @@ export async function GET(request: Request) {
         }
       }
 
-      const result = await sendDailySummaryToLine(lineUserId, userId || undefined)
-      if (result.success) {
-        sent.push(userId ? userId.slice(0, 8) : 'env')
+      // ส่งทุก LINE ID ของ user นี้
+      for (const lineUserId of lineIds) {
+        const result = await sendDailySummaryToLine(lineUserId, userId)
+        if (result.success) {
+          sent.push(`${userId ? userId.slice(0, 8) : 'env'} → ${lineUserId.slice(0, 8)}`)
+        }
       }
     }
 

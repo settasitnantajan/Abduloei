@@ -43,10 +43,18 @@ export async function GET(request: Request) {
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 
   try {
-    for (const { user_id: userId, line_user_id: lineUserId } of linkedUsers) {
-      // DB-level dedup: เช็คว่าสัปดาห์นี้ส่งไปแล้วหรือยัง
+    // Group LINE IDs by user_id
+    const userLineMap = new Map<string, string[]>()
+    for (const { user_id, line_user_id } of linkedUsers) {
+      const uid = user_id || '__env__'
+      if (!userLineMap.has(uid)) userLineMap.set(uid, [])
+      userLineMap.get(uid)!.push(line_user_id)
+    }
+
+    for (const [uid, lineIds] of userLineMap) {
+      const userId = uid === '__env__' ? undefined : uid
+
       if (userId) {
-        // หาวันจันทร์ของสัปดาห์นี้
         const now = new Date()
         const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
         const dayOfWeek = bangkokNow.getDay()
@@ -69,9 +77,11 @@ export async function GET(request: Request) {
         }
       }
 
-      const result = await sendWeeklySummaryToLine(lineUserId, userId || undefined)
-      if (result.success) {
-        sent.push(userId ? userId.slice(0, 8) : 'env')
+      for (const lineUserId of lineIds) {
+        const result = await sendWeeklySummaryToLine(lineUserId, userId)
+        if (result.success) {
+          sent.push(`${userId ? userId.slice(0, 8) : 'env'} → ${lineUserId.slice(0, 8)}`)
+        }
       }
     }
 
