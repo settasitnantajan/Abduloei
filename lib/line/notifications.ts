@@ -1,5 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin'
 import { sendTextMessage } from '@/lib/line/client'
+import { fetchMorningSummaryData } from '@/lib/line/timeline-data'
 
 const LINE_MESSAGE_MAX_LENGTH = 5000
 
@@ -27,108 +28,6 @@ const dailySummaryNotifiedUsers = new Set<string>()
 
 export async function resetDailySummaryTracking() {
   dailySummaryNotifiedUsers.clear()
-}
-
-export async function sendDailySummaryToLine(lineUserId: string, userId?: string) {
-  const now = new Date()
-  const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-
-  // Base queries
-  let eventsQuery = adminClient
-    .from('events')
-    .select('title, description, event_time, location, priority')
-    .eq('event_date', today)
-    .order('event_time', { ascending: true })
-
-  let tasksQuery = adminClient
-    .from('tasks')
-    .select('title, due_date, priority')
-    .eq('status', 'pending')
-    .order('due_date', { ascending: true })
-    .limit(10)
-
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
-  let notesQuery = adminClient
-    .from('notes')
-    .select('title, category')
-    .gte('created_at', yesterday)
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  // Filter ตาม user ถ้ามี
-  if (userId) {
-    eventsQuery = eventsQuery.eq('user_id', userId)
-    tasksQuery = tasksQuery.eq('user_id', userId)
-    notesQuery = notesQuery.eq('user_id', userId)
-  }
-
-  const [
-    { data: events, error: eventsError },
-    { data: tasks, error: tasksError },
-    { data: notes, error: notesError },
-  ] = await Promise.all([eventsQuery, tasksQuery, notesQuery])
-
-  if (eventsError) console.error('[Notifications] Events query failed:', eventsError)
-  if (tasksError) console.error('[Notifications] Tasks query failed:', tasksError)
-  if (notesError) console.error('[Notifications] Notes query failed:', notesError)
-
-  // สร้างข้อความ
-  let message = `📋 สรุปวันนี้ (${today})\n`
-
-  if (events && events.length > 0) {
-    message += `\n📌 นัดหมาย ${events.length} รายการ\n`
-    for (const e of events) {
-      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
-      const loc = e.location && e.location !== 'ไม่มี' ? e.location : ''
-      message += `• ${e.title}`
-      if (time) message += ` (${time})`
-      if (loc) message += ` 📍${loc}`
-      if (e.description) message += `\n  ${e.description}`
-      message += '\n'
-    }
-  } else {
-    message += '\nวันนี้ไม่มีนัดหมาย\n'
-  }
-
-  if (tasks && tasks.length > 0) {
-    message += `\n📝 งานค้าง ${tasks.length} รายการ\n`
-    for (const t of tasks) {
-      const due = t.due_date ? ` (${t.due_date})` : ''
-      message += `• ${t.title}${due}\n`
-    }
-  }
-
-  if (notes && notes.length > 0) {
-    message += `\n🗒️ บันทึกล่าสุด ${notes.length} รายการ\n`
-    for (const n of notes) {
-      const cat = n.category ? ` [${n.category}]` : ''
-      message += `• ${n.title}${cat}\n`
-    }
-  }
-
-  message += '\nขอให้เป็นวันที่ดีนะคะ!'
-
-  // บันทึกแจ้งเตือนบนเว็บ (แค่ 1 ครั้งต่อ user)
-  if (userId && !dailySummaryNotifiedUsers.has(userId)) {
-    dailySummaryNotifiedUsers.add(userId)
-    const eventCount = events?.length ?? 0
-    const taskCount = tasks?.length ?? 0
-    const eventDetails = events?.map(e => {
-      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
-      return `${e.title}${time ? ' (' + time + ')' : ''}${e.description ? ' - ' + e.description : ''}`
-    }).join(', ') || ''
-    const webMsg = eventCount > 0
-      ? `นัดหมาย ${eventCount}: ${eventDetails}` + (taskCount > 0 ? ` | งานค้าง ${taskCount} รายการ` : '')
-      : `ไม่มีนัดหมาย` + (taskCount > 0 ? ` | งานค้าง ${taskCount} รายการ` : '')
-    await saveWebNotification(
-      userId,
-      `สรุปวันนี้ (${today})`,
-      webMsg,
-      'daily_summary'
-    )
-  }
-
-  return sendTextMessage(lineUserId, truncateMessage(message))
 }
 
 const routineNotifiedUsers = new Set<string>()
@@ -266,6 +165,220 @@ export async function sendTaskReminderToLine(
   }
 
   return sendTextMessage(lineUserId, message)
+}
+
+// === Unified Timeline Notifications ===
+
+const MONTHS_TH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+function formatThaiDate(dateStr: string): string {
+  const [, m, d] = dateStr.split('-')
+  return `${parseInt(d)} ${MONTHS_TH_SHORT[parseInt(m) - 1]}`
+}
+
+export function buildMorningSummaryMessage(data: Awaited<ReturnType<typeof fetchMorningSummaryData>>): string {
+  const dateLabel = formatThaiDate(data.today)
+  let message = `🌅 สรุปวันนี้ (${dateLabel})\n`
+
+  const hasAnything = data.todayRoutines.length > 0 || data.todayEvents.length > 0 ||
+    data.todayTasks.length > 0 || data.todayMonthlyRoutines.length > 0 ||
+    data.recentNotes.length > 0
+
+  if (!hasAnything && data.tomorrowEvents.length === 0 && data.tomorrowRoutines.length === 0) {
+    message += '\nวันนี้ว่างๆ ไม่มีนัด ไม่มีงาน'
+    if (data.pendingTaskCount > 0) {
+      message += `\n\n📝 งานค้างรวม ${data.pendingTaskCount} รายการ`
+    }
+    message += '\n\nขอให้เป็นวันที่ดีนะคะ!'
+    return message
+  }
+
+  // กิจวัตร
+  if (data.todayRoutines.length > 0) {
+    message += `\n⏰ กิจวัตร (${data.todayRoutines.length})\n`
+    for (const r of data.todayRoutines) {
+      const time = r.routine_time?.slice(0, 5) || ''
+      message += `• ${time ? time + ' ' : ''}${r.title}\n`
+    }
+  }
+
+  // นัดหมาย
+  if (data.todayEvents.length > 0) {
+    message += `\n📌 นัดหมาย (${data.todayEvents.length})\n`
+    for (const e of data.todayEvents) {
+      const time = e.event_time ? e.event_time.slice(0, 5) : ''
+      const loc = e.location && e.location !== 'ไม่มี' ? ` (${e.location})` : ''
+      message += `• ${time ? time + ' ' : ''}${e.title}${loc}\n`
+    }
+  }
+
+  // งานวันนี้
+  if (data.todayTasks.length > 0) {
+    message += `\n📋 งานวันนี้ (${data.todayTasks.length})\n`
+    for (const t of data.todayTasks) {
+      const time = t.due_time ? t.due_time.slice(0, 5) + ' ' : ''
+      message += `• ${time}${t.title}\n`
+    }
+  }
+
+  // กิจวัตรรายเดือน
+  if (data.todayMonthlyRoutines.length > 0) {
+    message += `\n📅 กิจวัตรรายเดือน\n`
+    for (const r of data.todayMonthlyRoutines) {
+      const time = r.routine_time?.slice(0, 5) || ''
+      const dayLabel = r.day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${r.day_of_month}`
+      message += `• ${dayLabel} ${r.title}${time ? ` (${time})` : ''}\n`
+    }
+  }
+
+  // บันทึกล่าสุด
+  if (data.recentNotes.length > 0) {
+    message += `\n🗒️ บันทึกล่าสุด\n`
+    for (const n of data.recentNotes) {
+      const cat = n.category ? ` [${n.category}]` : ''
+      message += `• ${n.title}${cat}\n`
+    }
+  }
+
+  // งานค้างรวม
+  if (data.pendingTaskCount > data.todayTasks.length) {
+    message += `\n📝 งานค้างรวม ${data.pendingTaskCount} รายการ`
+  }
+
+  // พรุ่งนี้
+  const tomorrowAll = [
+    ...data.tomorrowEvents.map(e => ({
+      time: e.event_time?.slice(0, 5) || '',
+      label: e.title,
+    })),
+    ...data.tomorrowRoutines.map(r => ({
+      time: r.routine_time?.slice(0, 5) || '',
+      label: `กิจวัตร: ${r.title}`,
+    })),
+  ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'))
+
+  if (tomorrowAll.length > 0) {
+    message += `\n\n🔜 พรุ่งนี้\n`
+    for (const item of tomorrowAll.slice(0, 5)) {
+      message += `• ${item.time ? item.time + ' ' : ''}${item.label}\n`
+    }
+    if (tomorrowAll.length > 5) {
+      message += `  ...อีก ${tomorrowAll.length - 5} รายการ\n`
+    }
+  }
+
+  message += '\nขอให้เป็นวันที่ดีนะคะ!'
+  return message
+}
+
+interface HeadsUpEvent {
+  title: string
+  event_time?: string | null
+  location?: string | null
+}
+interface HeadsUpTask {
+  title: string
+  due_time?: string | null
+}
+interface HeadsUpRoutine {
+  title: string
+  routine_time?: string
+}
+
+export function buildHourlyHeadsUpMessage(data: {
+  upcomingEvents: HeadsUpEvent[]
+  upcomingTasks: HeadsUpTask[]
+  upcomingRoutines: HeadsUpRoutine[]
+  upcomingMonthlyRoutines: HeadsUpRoutine[]
+}): string | null {
+  const total = data.upcomingEvents.length + data.upcomingTasks.length +
+    data.upcomingRoutines.length + data.upcomingMonthlyRoutines.length
+  if (total === 0) return null
+
+  let message = `🔔 อีก 1 ชั่วโมง!\n`
+
+  for (const e of data.upcomingEvents) {
+    const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+    const loc = e.location && e.location !== 'ไม่มี' ? ` (${e.location})` : ''
+    message += `\n📌 ${e.title}${time ? ` — ${time}` : ''}${loc}`
+  }
+
+  for (const t of data.upcomingTasks) {
+    const time = t.due_time ? t.due_time.slice(0, 5) + ' น.' : ''
+    message += `\n📋 ${t.title}${time ? ` — ${time}` : ' — กำหนดวันนี้'}`
+  }
+
+  for (const r of data.upcomingRoutines) {
+    const time = r.routine_time?.slice(0, 5) || ''
+    message += `\n⏰ ${r.title}${time ? ` — ${time} น.` : ''}`
+  }
+
+  for (const r of data.upcomingMonthlyRoutines) {
+    const time = r.routine_time?.slice(0, 5) || ''
+    message += `\n📅 ${r.title}${time ? ` — ${time} น.` : ''}`
+  }
+
+  return message
+}
+
+export async function sendUnifiedMorningSummaryToLine(lineUserId: string, userId: string) {
+  const data = await fetchMorningSummaryData(userId)
+  const message = buildMorningSummaryMessage(data)
+
+  // บันทึก web notification (1 ครั้งต่อ user)
+  if (!dailySummaryNotifiedUsers.has(userId)) {
+    dailySummaryNotifiedUsers.add(userId)
+
+    const eventCount = data.todayEvents.length
+    const taskCount = data.todayTasks.length
+    const routineCount = data.todayRoutines.length
+    const parts: string[] = []
+    if (routineCount > 0) parts.push(`กิจวัตร ${routineCount}`)
+    if (eventCount > 0) parts.push(`นัดหมาย ${eventCount}`)
+    if (taskCount > 0) parts.push(`งาน ${taskCount}`)
+
+    const webMsg = parts.length > 0 ? parts.join(' | ') : 'วันนี้ว่างๆ ไม่มีนัด ไม่มีงาน'
+
+    await saveWebNotification(
+      userId,
+      `🌅 สรุปวันนี้ (${formatThaiDate(data.today)})`,
+      webMsg,
+      'daily_summary'
+    )
+  }
+
+  return sendTextMessage(lineUserId, truncateMessage(message))
+}
+
+export async function sendHourlyHeadsUpToLine(
+  lineUserId: string,
+  userId: string,
+  data: {
+    upcomingEvents: HeadsUpEvent[]
+    upcomingTasks: HeadsUpTask[]
+    upcomingRoutines: HeadsUpRoutine[]
+    upcomingMonthlyRoutines: HeadsUpRoutine[]
+  }
+) {
+  const message = buildHourlyHeadsUpMessage(data)
+  if (!message) return { success: true }
+
+  // บันทึก web notification
+  const total = data.upcomingEvents.length + data.upcomingTasks.length +
+    data.upcomingRoutines.length + data.upcomingMonthlyRoutines.length
+  const currentHour = new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok', hour: '2-digit', hour12: false })
+  const headsUpKey = `headsup:${userId}:${currentHour}`
+  if (!eventNotifiedUsers.has(headsUpKey)) {
+    eventNotifiedUsers.add(headsUpKey)
+    await saveWebNotification(
+      userId,
+      `🔔 อีก 1 ชั่วโมง! (${total} รายการ)`,
+      message.replace('🔔 อีก 1 ชั่วโมง!\n', '').trim(),
+      'reminder'
+    )
+  }
+
+  return sendTextMessage(lineUserId, truncateMessage(message))
 }
 
 export async function sendWeeklySummaryToLine(lineUserId: string, userId?: string) {

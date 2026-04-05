@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Calendar, CheckSquare, StickyNote, X, ChevronRight } from 'lucide-react';
+import { Calendar, CheckSquare, StickyNote, Repeat, CalendarDays, X, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CalendarEvent } from './CalendarView';
 
 function getTypeConfig(type: string) {
   switch (type) {
-    case 'event': return { icon: Calendar, color: 'bg-[#00B900]', text: 'text-[#00B900]', label: 'นัดหมาย' };
-    case 'task': return { icon: CheckSquare, color: 'bg-blue-500', text: 'text-blue-400', label: 'งาน' };
-    case 'note': return { icon: StickyNote, color: 'bg-amber-500', text: 'text-amber-400', label: 'บันทึก' };
-    default: return { icon: Calendar, color: 'bg-gray-500', text: 'text-gray-400', label: '' };
+    case 'event': return { icon: Calendar, color: 'bg-[#00B900]', bg: 'bg-green-900/30', text: 'text-[#00B900]', label: 'นัดหมาย' };
+    case 'task': return { icon: CheckSquare, color: 'bg-blue-500', bg: 'bg-blue-900/30', text: 'text-blue-400', label: 'งาน' };
+    case 'note': return { icon: StickyNote, color: 'bg-amber-500', bg: 'bg-amber-900/30', text: 'text-amber-400', label: 'บันทึก' };
+    case 'routine': return { icon: Repeat, color: 'bg-purple-500', bg: 'bg-purple-900/30', text: 'text-purple-400', label: 'กิจวัตร' };
+    case 'monthly_routine': return { icon: CalendarDays, color: 'bg-pink-500', bg: 'bg-pink-900/30', text: 'text-pink-400', label: 'รายเดือน' };
+    default: return { icon: Calendar, color: 'bg-gray-500', bg: 'bg-gray-800/30', text: 'text-gray-400', label: '' };
   }
 }
 
@@ -88,7 +90,11 @@ export default function TimelineView({ events }: TimelineViewProps) {
               {group.items.map((ev) => {
                 const config = getTypeConfig(ev.type);
                 const Icon = config.icon;
-                const dotColor = ev.type === 'event' ? 'bg-[#00B900]' : ev.type === 'task' ? 'bg-blue-500' : 'bg-amber-500';
+                const dotColorMap: Record<string, string> = {
+                  event: 'bg-[#00B900]', task: 'bg-blue-500', note: 'bg-amber-500',
+                  routine: 'bg-purple-500', monthly_routine: 'bg-pink-500',
+                };
+                const dotColor = dotColorMap[ev.type] || 'bg-gray-500';
 
                 return (
                   <button
@@ -102,7 +108,7 @@ export default function TimelineView({ events }: TimelineViewProps) {
                     </div>
 
                     {/* Icon */}
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.color}/20 shrink-0`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} shrink-0`}>
                       <Icon className={`w-5 h-5 ${config.text}`} />
                     </div>
 
@@ -162,7 +168,7 @@ export default function TimelineView({ events }: TimelineViewProps) {
                   <>
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.color}/20`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.bg}`}>
                           <Icon className={`w-4 h-4 ${config.text}`} />
                         </div>
                         <span className={`text-sm font-medium ${config.text}`}>{config.label}</span>
