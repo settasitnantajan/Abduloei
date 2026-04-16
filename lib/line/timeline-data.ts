@@ -199,25 +199,29 @@ export async function fetchHourlyHeadsUpData(userId: string) {
     return diffMin >= 45 && diffMin <= 75
   })
 
-  // Filter routines ที่ remind time ใน -2 ถึง +15 นาที (สำหรับ routine reminder ตามเวลาจริง)
+  // Filter routines: แจ้งเตือนเมื่อถึงเวลา remind_before_minutes ก่อนเวลาจริง
+  // เช่น routine 12:00 remind_before=0 → แจ้งตอน 12:00 พอดี
+  // routine 12:00 remind_before=15 → แจ้งตอน 11:45
+  // ใช้ window -2 ถึง +5 นาที จาก remindAt เพื่อให้แม่นยำกว่าเดิม
   const upcomingRoutines = (routines || []).filter(r => {
     if (!r.days_of_week?.includes(todayDow)) return false
     if (r.last_reminded_date === todayDateStr) return false
     const routineDateTime = buildEventDate(todayDateStr, r.routine_time)
     if (!routineDateTime) return false
-    const remindAt = new Date(routineDateTime.getTime() - r.remind_before_minutes * 60 * 1000)
+    const remindAt = new Date(routineDateTime.getTime() - (r.remind_before_minutes || 0) * 60 * 1000)
     const diffMin = (remindAt.getTime() - nowMs) / (1000 * 60)
-    return diffMin >= -2 && diffMin <= 15
+    // window แคบลง: -2 ถึง +5 นาที (จากเดิม -2 ถึง +15)
+    return diffMin >= -2 && diffMin <= 5
   })
 
-  // Filter monthly routines
+  // Filter monthly routines — ใช้ window เดียวกัน
   const upcomingMonthlyRoutines = (monthlyRoutines || []).filter(r => {
     if (r.last_reminded_date === todayDateStr) return false
     const routineDateTime = buildEventDate(todayDateStr, r.routine_time)
     if (!routineDateTime) return false
-    const remindAt = new Date(routineDateTime.getTime() - r.remind_before_minutes * 60 * 1000)
+    const remindAt = new Date(routineDateTime.getTime() - (r.remind_before_minutes || 0) * 60 * 1000)
     const diffMin = (remindAt.getTime() - nowMs) / (1000 * 60)
-    return diffMin >= -2 && diffMin <= 15
+    return diffMin >= -2 && diffMin <= 5
   })
 
   return {

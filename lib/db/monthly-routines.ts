@@ -21,7 +21,6 @@ export interface CreateMonthlyRoutineInput {
   routine_time: string;
   day_of_month: number;
   remind_before_minutes?: number;
-  assigned_member_id?: string;
   source_message?: string;
 }
 
@@ -45,7 +44,6 @@ export async function createMonthlyRoutine(
         routine_time: data.routine_time,
         day_of_month: data.day_of_month,
         remind_before_minutes: data.remind_before_minutes ?? 10,
-        assigned_member_id: data.assigned_member_id || null,
         source_message: data.source_message,
       })
       .select()
@@ -88,7 +86,7 @@ export async function getUserMonthlyRoutines(): Promise<{ routines: MonthlyRouti
 
 export async function updateMonthlyRoutine(
   routineId: string,
-  data: Partial<Pick<MonthlyRoutine, 'title' | 'description' | 'routine_time' | 'day_of_month' | 'remind_before_minutes'>> & { assigned_member_id?: string | null }
+  data: Partial<Pick<MonthlyRoutine, 'title' | 'description' | 'routine_time' | 'day_of_month' | 'remind_before_minutes'>>
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();

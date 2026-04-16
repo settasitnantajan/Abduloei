@@ -1,39 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { Sun, Calendar, List } from 'lucide-react';
+import { Calendar, List } from 'lucide-react';
 import CalendarView from './CalendarView';
 import TimelineView from './TimelineView';
-import TodayView from './TodayView';
 import type { CalendarEvent } from './CalendarView';
 
 interface DashboardTabsProps {
   events: CalendarEvent[];
-  todayEvents: CalendarEvent[];
-  todayTasks: CalendarEvent[];
-  todayRoutines: CalendarEvent[];
-  todayMonthlyRoutines: CalendarEvent[];
-  tomorrowItems: CalendarEvent[];
 }
 
-export default function DashboardTabs({ events, todayEvents, todayTasks, todayRoutines, todayMonthlyRoutines, tomorrowItems }: DashboardTabsProps) {
-  const [activeTab, setActiveTab] = useState<'today' | 'calendar' | 'timeline'>('today');
+export default function DashboardTabs({ events }: DashboardTabsProps) {
+  const [activeTab, setActiveTab] = useState<'calendar' | 'timeline'>('calendar');
 
   return (
     <div>
       {/* Tab Switcher */}
       <div className="flex items-center bg-[#1A1A1A] border border-[#333333] rounded-xl p-1 mb-4">
-        <button
-          onClick={() => setActiveTab('today')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'today'
-              ? 'bg-[#2A2A2A] text-white'
-              : 'text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          <Sun className="w-4 h-4" />
-          วันนี้
-        </button>
         <button
           onClick={() => setActiveTab('calendar')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -59,15 +42,7 @@ export default function DashboardTabs({ events, todayEvents, todayTasks, todayRo
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'today' ? (
-        <TodayView
-          todayEvents={todayEvents}
-          todayTasks={todayTasks}
-          todayRoutines={todayRoutines}
-          todayMonthlyRoutines={todayMonthlyRoutines}
-          tomorrowItems={tomorrowItems}
-        />
-      ) : activeTab === 'calendar' ? (
+      {activeTab === 'calendar' ? (
         <CalendarView events={events} />
       ) : (
         <TimelineView events={events} />

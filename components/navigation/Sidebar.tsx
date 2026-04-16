@@ -14,8 +14,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Repeat,
-  CalendarDays,
-  BarChart3
+  CalendarDays
 } from 'lucide-react';
 import HomeSelector from '@/components/homes/HomeSelector';
 import { Separator } from '@/components/ui/separator';
@@ -41,7 +40,6 @@ const mainNavItems: NavItem[] = [
   { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
   { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
   { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
-  { id: 'weekly-summary', label: 'รายสัปดาห์', icon: BarChart3, path: '/weekly-summary' },
   { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
 ];
 
@@ -207,9 +205,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
           )}
         </button>
-        {!collapsed && (
-          <p className="text-[10px] text-gray-600 text-center mt-1">v1.0.1</p>
-        )}
       </div>
     </aside>
   );

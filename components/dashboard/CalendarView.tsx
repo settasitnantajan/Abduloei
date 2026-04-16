@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, CheckSquare, StickyNote, Repeat, CalendarDays, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, CheckSquare, StickyNote, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface CalendarEvent {
@@ -10,7 +10,7 @@ export interface CalendarEvent {
   date: string;
   time?: string;
   priority?: string;
-  type: 'event' | 'task' | 'note' | 'routine' | 'monthly_routine';
+  type: 'event' | 'task' | 'note';
   description?: string;
   status?: string;
   source_message?: string;
@@ -29,12 +29,10 @@ const MONTHS_TH = [
 
 function getTypeConfig(type: string) {
   switch (type) {
-    case 'event': return { icon: Calendar, color: 'bg-[#00B900]', bg: 'bg-green-900/30', text: 'text-[#00B900]', label: 'นัดหมาย' };
-    case 'task': return { icon: CheckSquare, color: 'bg-blue-500', bg: 'bg-blue-900/30', text: 'text-blue-400', label: 'งาน' };
-    case 'note': return { icon: StickyNote, color: 'bg-amber-500', bg: 'bg-amber-900/30', text: 'text-amber-400', label: 'บันทึก' };
-    case 'routine': return { icon: Repeat, color: 'bg-purple-500', bg: 'bg-purple-900/30', text: 'text-purple-400', label: 'กิจวัตร' };
-    case 'monthly_routine': return { icon: CalendarDays, color: 'bg-pink-500', bg: 'bg-pink-900/30', text: 'text-pink-400', label: 'รายเดือน' };
-    default: return { icon: Calendar, color: 'bg-gray-500', bg: 'bg-gray-800/30', text: 'text-gray-400', label: '' };
+    case 'event': return { icon: Calendar, color: 'bg-[#00B900]', text: 'text-[#00B900]', label: 'นัดหมาย' };
+    case 'task': return { icon: CheckSquare, color: 'bg-blue-500', text: 'text-blue-400', label: 'งาน' };
+    case 'note': return { icon: StickyNote, color: 'bg-amber-500', text: 'text-amber-400', label: 'บันทึก' };
+    default: return { icon: Calendar, color: 'bg-gray-500', text: 'text-gray-400', label: '' };
   }
 }
 
@@ -263,7 +261,7 @@ export default function CalendarView({ events }: CalendarViewProps) {
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.bg}`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.color}/20`}>
                           <Icon className={`w-4 h-4 ${config.text}`} />
                         </div>
                         <span className={`text-sm font-medium ${config.text}`}>{config.label}</span>

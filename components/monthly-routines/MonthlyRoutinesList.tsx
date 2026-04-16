@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Plus, Clock, Trash2, Bell, X, Loader2, Pencil } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { createMonthlyRoutine, toggleMonthlyRoutine, deleteMonthlyRoutine, updateMonthlyRoutine } from '@/app/actions/monthly-routines';
-import { getHomeMembers } from '@/app/actions/home-members';
 import type { MonthlyRoutine, CreateMonthlyRoutineInput } from '@/lib/db/monthly-routines';
 
 function formatTime(time: string) {
@@ -16,12 +15,6 @@ function formatTime(time: string) {
 function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
-  const [assignedMemberId, setAssignedMemberId] = useState('');
-
-  useEffect(() => {
-    getHomeMembers().then(m => setMembers(m.map(x => ({ id: x.id, name: x.name }))));
-  }, []);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -34,7 +27,6 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
       routine_time: data.get('routine_time') as string,
       day_of_month: Number(data.get('day_of_month') || 1),
       remind_before_minutes: Number(data.get('remind_before_minutes') || 10),
-      assigned_member_id: assignedMemberId || undefined,
     };
 
     const description = (data.get('description') as string).trim();
@@ -80,7 +72,7 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
             <input name="description" type="text" placeholder="รายละเอียดเพิ่มเติม" className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white placeholder:text-gray-500 text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors" />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-300">ทุกวันที่ <span className="text-red-400">*</span></label>
               <select name="day_of_month" defaultValue="1" className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors">
@@ -108,20 +100,6 @@ function CreateMonthlyRoutineModal({ onClose, onCreated }: { onClose: () => void
             </select>
           </div>
 
-          {members.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-300">แจ้งเตือนใคร</label>
-              <select
-                value={assignedMemberId}
-                onChange={e => setAssignedMemberId(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#333333] bg-[#111111] text-white text-sm focus:outline-none focus:border-pink-500/60 focus:ring-2 focus:ring-pink-500/20 transition-colors"
-              >
-                <option value="">ทุกคน</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          )}
-
           {error && (
             <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">{error}</div>
           )}
@@ -147,8 +125,6 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
   const [editTime, setEditTime] = useState(routine.routine_time?.slice(0, 5) || '09:00');
   const [editDay, setEditDay] = useState(routine.day_of_month || 1);
   const [editRemind, setEditRemind] = useState(routine.remind_before_minutes ?? 10);
-  const [editMemberId, setEditMemberId] = useState((routine as any).assigned_member_id || '');
-  const [editMembers, setEditMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const handleToggle = () => {
     startToggleTransition(async () => {
@@ -170,8 +146,6 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
     setEditTime(routine.routine_time?.slice(0, 5) || '09:00');
     setEditDay(routine.day_of_month || 1);
     setEditRemind(routine.remind_before_minutes ?? 10);
-    setEditMemberId((routine as any).assigned_member_id || '');
-    getHomeMembers().then(m => setEditMembers(m.map(x => ({ id: x.id, name: x.name }))));
     setIsEditing(true);
   };
 
@@ -182,7 +156,6 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
         routine_time: editTime,
         day_of_month: editDay,
         remind_before_minutes: editRemind,
-        assigned_member_id: editMemberId || null,
       });
       setIsEditing(false);
       onRefresh();
@@ -233,7 +206,7 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
 
       {/* Edit Modal */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsEditing(false)}>
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-[#333333]">
               <h2 className="text-lg font-semibold text-white">แก้ไขกิจวัตรรายเดือน</h2>
@@ -244,7 +217,7 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
                 <label className="block text-sm text-gray-400 mb-1">ชื่อ</label>
                 <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">ทุกวันที่</label>
                   <select value={editDay} onChange={e => setEditDay(Number(e.target.value))} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500">
@@ -263,15 +236,6 @@ function MonthlyRoutineCard({ routine, onRefresh }: { routine: MonthlyRoutine; o
                 <label className="block text-sm text-gray-400 mb-1">เตือนก่อน (นาที)</label>
                 <input type="number" value={editRemind} onChange={e => setEditRemind(Number(e.target.value))} min={0} max={120} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500" />
               </div>
-              {editMembers.length > 0 && (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">แจ้งเตือนใคร</label>
-                  <select value={editMemberId} onChange={e => setEditMemberId(e.target.value)} className="w-full bg-[#2A2A2A] border border-[#333333] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-pink-500">
-                    <option value="">ทุกคน</option>
-                    {editMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-              )}
               <button onClick={handleEditSave} disabled={isEditPending || !editTitle.trim()} className="w-full bg-pink-600 hover:bg-pink-500 text-white rounded-lg py-2.5 font-medium disabled:opacity-50 flex items-center justify-center gap-2">
                 {isEditPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {isEditPending ? 'กำลังบันทึก...' : 'บันทึก'}

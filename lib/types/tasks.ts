@@ -18,7 +18,6 @@ export interface CreateTaskInput {
   due_date?: string
   due_time?: string
   priority?: 'low' | 'medium' | 'high'
-  assigned_member_id?: string
   source_message?: string
 }
 

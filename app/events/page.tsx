@@ -7,7 +7,6 @@ import DeleteButton from '@/components/shared/DeleteButton';
 import EditButton, { EditField } from '@/components/shared/EditButton';
 import CreateEventModal from '@/components/events/CreateEventModal';
 import { updateEvent } from '@/app/actions/events';
-import { getHomeMembers } from '@/app/actions/home-members';
 
 function getPriorityConfig(priority?: string) {
   switch (priority) {
@@ -52,11 +51,6 @@ export default async function EventsPage() {
   }
 
   const { events, error: eventsError } = await getUserEvents();
-  const members = await getHomeMembers();
-  const memberOptions = [
-    { label: 'ทุกคน', value: '' },
-    ...members.map(m => ({ label: m.name, value: m.id }))
-  ];
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-6">
@@ -72,7 +66,7 @@ export default async function EventsPage() {
 
         {/* Events List or Empty State */}
         {eventsError || !events || events.length === 0 ? (
-          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-6 md:p-12 text-center">
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-lg p-12 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-20 h-20 rounded-full bg-[#00B900]/10 flex items-center justify-center">
                 <Calendar className="w-10 h-10 text-[#00B900]" />
@@ -110,9 +104,9 @@ export default async function EventsPage() {
                   {/* Header ของ Event */}
                   <div className="p-5">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-lg font-semibold text-white truncate">{event.title}</h3>
+                          <h3 className="text-lg font-semibold text-white">{event.title}</h3>
                           <EditButton
                             onEdit={editEvent}
                             itemId={event.id}
@@ -126,7 +120,6 @@ export default async function EventsPage() {
                                 { label: 'ไม่ด่วน', value: 'low' }, { label: 'ปกติ', value: 'medium' }, { label: 'ด่วน', value: 'high' },
                               ]},
                               { key: 'description', label: 'รายละเอียด', type: 'textarea', value: event.description || '' },
-                              { key: 'assigned_member_id', label: 'แจ้งเตือนใคร', type: 'select', value: event.assigned_member_id || '', options: memberOptions },
                             ]}
                           />
                           <DeleteButton onDelete={deleteEvent} itemId={event.id} itemName={event.title} />

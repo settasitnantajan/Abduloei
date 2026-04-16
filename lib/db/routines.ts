@@ -21,7 +21,6 @@ export interface CreateRoutineInput {
   routine_time: string;
   days_of_week?: number[];
   remind_before_minutes?: number;
-  assigned_member_id?: string;
   source_message?: string;
 }
 
@@ -45,7 +44,6 @@ export async function createRoutine(
         routine_time: data.routine_time,
         days_of_week: data.days_of_week || [0, 1, 2, 3, 4, 5, 6],
         remind_before_minutes: data.remind_before_minutes ?? 10,
-        assigned_member_id: data.assigned_member_id || null,
         source_message: data.source_message,
       })
       .select()
@@ -88,7 +86,7 @@ export async function getUserRoutines(): Promise<{ routines: Routine[]; error?: 
 
 export async function updateRoutine(
   routineId: string,
-  data: Partial<Pick<Routine, 'title' | 'description' | 'routine_time' | 'days_of_week' | 'remind_before_minutes'>> & { assigned_member_id?: string | null }
+  data: Partial<Pick<Routine, 'title' | 'description' | 'routine_time' | 'days_of_week' | 'remind_before_minutes'>>
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();

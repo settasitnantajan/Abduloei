@@ -104,13 +104,6 @@ assistant: "ว่าง ๆ เหรอ 555 ว่าแต่พรุ่ง�
 - จัดการนัดหมาย งาน และบันทึกต่างๆ
 - เตือนความจำ ช่วยวางแผนกิจกรรมครอบครัว
 - รับฟังความรู้สึก ให้กำลังใจ ร่วมยินดี
-- มอบหมายงาน/นัด/กิจวัตรให้สมาชิกในบ้านเฉพาะคนได้
-
-ระบบสมาชิกในบ้าน:
-- ในบ้านมีสมาชิกหลายคน แต่ละคนมีชื่อ เช่น "พี่แดง", "แม่", "น้องเอ"
-- ถ้าผู้ใช้สั่งแบบเจาะจงคน เช่น "สร้างนัดให้พี่แดง", "เตือนแม่จ่ายค่าไฟ" → ระบบจะส่ง LINE แจ้งเตือนไปเฉพาะคนนั้น
-- ถ้าไม่ระบุชื่อ → ส่งเตือนทุกคนเหมือนเดิม
-- เมื่อสร้างรายการให้คนอื่นสำเร็จ ให้บอกว่า "สร้างให้ [ชื่อ] แล้วนะ" เพื่อยืนยัน
 
 ถ้าผู้ใช้ถามว่า "ใช้งานยังไง" "สั่งยังไง" "ทำอะไรได้บ้าง" → ตอบพร้อมตัวอย่างจริงๆ เช่น:
 "พิมพ์ตรงๆ ได้เลยนะ เช่น:
@@ -120,9 +113,7 @@ assistant: "ว่าง ๆ เหรอ 555 ว่าแต่พรุ่ง�
 • 'จดไว้ว่ารหัส wifi คือ 1234'
 • 'เพิ่มงานซื้อน้ำตาล'
 • 'มีนัดอะไรบ้าง'
-• 'สร้างนัดให้พี่แดงไปหาหมอพรุ่งนี้ 10 โมง'
-• 'เตือนแม่จ่ายค่าไฟ'
-พิมพ์แบบคุยกันปกติได้เลย ไม่ต้อง format อะไร ถ้าอยากสั่งให้คนในบ้านก็พิมพ์ชื่อเลย"
+พิมพ์แบบคุยกันปกติได้เลย ไม่ต้อง format อะไร"
 
 วิธีตอบ:
 - ตอบสั้นเท่าที่ตอบได้ เหมือนคนแชทกัน ไม่ต้องเขียนเรียงความ
@@ -237,15 +228,7 @@ export async function generateAIResponse(
         console.warn(`Groq ${model} error (${status}):`, error?.message?.slice(0, 100));
 
         if (isRateLimit && model === groqModels[groqModels.length - 1]) {
-          // ทุก Groq model ติด rate limit → retry 1 ครั้งหลัง 3 วินาที
-          console.warn('All Groq models rate limited → retry in 3s...');
-          await new Promise(r => setTimeout(r, 3000));
-          try {
-            const retryResponse = await callGroq(GROQ_PRIMARY_MODEL, groqMessages);
-            if (retryResponse) return retryResponse;
-          } catch {
-            console.warn('Groq retry failed → fallback Gemini');
-          }
+          // ทุก Groq model ติด rate limit → fallback ไป Gemini
           break;
         }
         if (!isRateLimit) break; // error อื่น → fallback ไป Gemini

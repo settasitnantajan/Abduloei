@@ -14,7 +14,6 @@ export interface Event {
   location?: string
   priority?: 'low' | 'medium' | 'high'
   status: string
-  assigned_member_id?: string
   source_message?: string
   created_at: string
   updated_at: string
@@ -39,7 +38,6 @@ export interface CreateEventInput {
   event_time?: string
   location?: string
   priority?: 'low' | 'medium' | 'high'
-  assigned_member_id?: string
   source_message?: string
   checklist_items?: Array<{
     title: string

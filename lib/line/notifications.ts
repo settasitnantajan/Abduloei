@@ -43,9 +43,13 @@ export async function sendRoutineReminderToLine(
   routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
-  let message = `⏰ ${routine.title}\n`
-  message += `เวลา ${timeStr} น.`
-  if (routine.description) message += `\n${routine.description}`
+  const remindLabel = routine.remind_before_minutes > 0 ? ` (อีก ${routine.remind_before_minutes} นาที)` : ''
+  let message = `⏰ กิจวัตรประจำสัปดาห์${remindLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
+  message += `📌 ${routine.title}\n`
+  message += `🕐 เวลา ${timeStr} น.\n`
+  if (routine.description) message += `📝 ${routine.description}\n`
+  message += `━━━━━━━━━━━━━━━━━━`
 
   const routineKey = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !routineNotifiedUsers.has(routineKey)) {
@@ -69,13 +73,16 @@ export async function sendEventReminderToLine(
   event: { id: string; user_id?: string; title: string; description?: string | null; event_date: string; event_time: string | null; location: string | null },
   timeLabel: string
 ) {
+  const dateLabel = event.event_date ? formatThaiDate(event.event_date) : ''
   let message = `🔔 ${timeLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📌 ${event.title}\n`
-  if (event.event_date) message += `📅 ${event.event_date}`
-  if (event.event_time) message += ` ⏰ ${event.event_time.slice(0, 5)} น.`
+  if (dateLabel) message += `📆 ${dateLabel}`
+  if (event.event_time) message += ` 🕐 ${event.event_time.slice(0, 5)} น.`
   message += '\n'
   if (event.location && event.location !== 'ไม่มี') message += `📍 ${event.location}\n`
-  if (event.description) message += `${event.description}\n`
+  if (event.description) message += `📝 ${event.description}\n`
+  message += `━━━━━━━━━━━━━━━━━━`
 
   const eventKey = `${event.user_id}:${event.id}:${timeLabel}`
   if (event.user_id && !eventNotifiedUsers.has(eventKey)) {
@@ -108,10 +115,14 @@ export async function sendMonthlyRoutineReminderToLine(
   routine: { id: string; user_id?: string; title: string; description?: string | null; routine_time: string; day_of_month: number; remind_before_minutes: number }
 ) {
   const timeStr = routine.routine_time?.slice(0, 5) || ''
-  const dayLabel = routine.day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${routine.day_of_month}`
-  let message = `📅 ${routine.title}\n`
-  message += `${dayLabel} เวลา ${timeStr} น.`
-  if (routine.description) message += `\n${routine.description}`
+  const dayLabel = routine.day_of_month === 32 ? 'สิ้นเดือน' : `ทุกวันที่ ${routine.day_of_month}`
+  const remindLabel = routine.remind_before_minutes > 0 ? ` (อีก ${routine.remind_before_minutes} นาที)` : ''
+  let message = `📅 กิจวัตรรายเดือน${remindLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
+  message += `📌 ${routine.title}\n`
+  message += `🕐 เวลา ${timeStr} น. (${dayLabel})\n`
+  if (routine.description) message += `📝 ${routine.description}\n`
+  message += `━━━━━━━━━━━━━━━━━━`
 
   const key = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !monthlyRoutineNotifiedUsers.has(key)) {
@@ -141,12 +152,15 @@ export async function sendTaskReminderToLine(
   task: { id: string; user_id?: string; title: string; description?: string | null; due_date: string; due_time: string | null },
   timeLabel: string
 ) {
+  const dateLabel = task.due_date ? formatThaiDate(task.due_date) : ''
   let message = `🔔 ${timeLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📋 ${task.title}\n`
-  if (task.due_date) message += `📅 ${task.due_date}`
-  if (task.due_time) message += ` ⏰ ${task.due_time.slice(0, 5)} น.`
+  if (dateLabel) message += `📆 ${dateLabel}`
+  if (task.due_time) message += ` 🕐 ${task.due_time.slice(0, 5)} น.`
   message += '\n'
-  if (task.description) message += `${task.description}\n`
+  if (task.description) message += `📝 ${task.description}\n`
+  message += `━━━━━━━━━━━━━━━━━━`
 
   const taskKey = `${task.user_id}:${task.id}:${timeLabel}`
   if (task.user_id && !taskNotifiedUsers.has(taskKey)) {
@@ -178,96 +192,117 @@ function formatThaiDate(dateStr: string): string {
 
 export function buildMorningSummaryMessage(data: Awaited<ReturnType<typeof fetchMorningSummaryData>>): string {
   const dateLabel = formatThaiDate(data.today)
-  let message = `🌅 สรุปวันนี้ (${dateLabel})\n`
+  const DAYS_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+  const bangkokNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const dayName = DAYS_TH[bangkokNow.getDay()]
+
+  let message = `━━━━━━━━━━━━━━━━━━\n`
+  message += `🌅 สรุปประจำวัน\n`
+  message += `📆 วัน${dayName}ที่ ${dateLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
 
   const hasAnything = data.todayRoutines.length > 0 || data.todayEvents.length > 0 ||
     data.todayTasks.length > 0 || data.todayMonthlyRoutines.length > 0 ||
     data.recentNotes.length > 0
 
   if (!hasAnything && data.tomorrowEvents.length === 0 && data.tomorrowRoutines.length === 0) {
-    message += '\nวันนี้ว่างๆ ไม่มีนัด ไม่มีงาน'
+    message += '\n✨ วันนี้ว่างๆ ไม่มีนัด ไม่มีงาน'
     if (data.pendingTaskCount > 0) {
       message += `\n\n📝 งานค้างรวม ${data.pendingTaskCount} รายการ`
     }
-    message += '\n\nขอให้เป็นวันที่ดีนะคะ!'
+    message += '\n\nขอให้เป็นวันที่ดีนะคะ! 💪'
     return message
   }
 
-  // กิจวัตร
+  // กิจวัตรประจำวัน (weekly routines)
   if (data.todayRoutines.length > 0) {
-    message += `\n⏰ กิจวัตร (${data.todayRoutines.length})\n`
-    for (const r of data.todayRoutines) {
-      const time = r.routine_time?.slice(0, 5) || ''
-      message += `• ${time ? time + ' ' : ''}${r.title}\n`
-    }
+    message += `\n⏰ กิจวัตรประจำวัน (${data.todayRoutines.length} รายการ)\n`
+    data.todayRoutines.forEach((r, i) => {
+      const time = r.routine_time?.slice(0, 5) || '--:--'
+      message += `${i + 1}. ${r.title}\n`
+      message += `   🕐 เวลา ${time} น.\n`
+      if (r.description) message += `   📝 ${r.description}\n`
+    })
+  }
+
+  // กิจวัตรรายเดือน (monthly routines)
+  if (data.todayMonthlyRoutines.length > 0) {
+    message += `\n📅 กิจวัตรรายเดือน (${data.todayMonthlyRoutines.length} รายการ)\n`
+    data.todayMonthlyRoutines.forEach((r, i) => {
+      const time = r.routine_time?.slice(0, 5) || '--:--'
+      const dayLabel = r.day_of_month === 32 ? 'สิ้นเดือน' : `ทุกวันที่ ${r.day_of_month}`
+      message += `${i + 1}. ${r.title}\n`
+      message += `   🕐 เวลา ${time} น. (${dayLabel})\n`
+      if (r.description) message += `   📝 ${r.description}\n`
+    })
   }
 
   // นัดหมาย
   if (data.todayEvents.length > 0) {
-    message += `\n📌 นัดหมาย (${data.todayEvents.length})\n`
-    for (const e of data.todayEvents) {
-      const time = e.event_time ? e.event_time.slice(0, 5) : ''
-      const loc = e.location && e.location !== 'ไม่มี' ? ` (${e.location})` : ''
-      message += `• ${time ? time + ' ' : ''}${e.title}${loc}\n`
-    }
+    message += `\n📌 นัดหมายวันนี้ (${data.todayEvents.length} รายการ)\n`
+    data.todayEvents.forEach((e, i) => {
+      const time = e.event_time ? e.event_time.slice(0, 5) : '--:--'
+      message += `${i + 1}. ${e.title}\n`
+      message += `   🕐 เวลา ${time} น.\n`
+      if (e.location && e.location !== 'ไม่มี') message += `   📍 ${e.location}\n`
+      if (e.priority && e.priority !== 'low') message += `   ⚡ ความสำคัญ: ${e.priority === 'high' ? 'สูง' : 'ปานกลาง'}\n`
+      if (e.description) message += `   📝 ${e.description}\n`
+    })
   }
 
   // งานวันนี้
   if (data.todayTasks.length > 0) {
-    message += `\n📋 งานวันนี้ (${data.todayTasks.length})\n`
-    for (const t of data.todayTasks) {
-      const time = t.due_time ? t.due_time.slice(0, 5) + ' ' : ''
-      message += `• ${time}${t.title}\n`
-    }
-  }
-
-  // กิจวัตรรายเดือน
-  if (data.todayMonthlyRoutines.length > 0) {
-    message += `\n📅 กิจวัตรรายเดือน\n`
-    for (const r of data.todayMonthlyRoutines) {
-      const time = r.routine_time?.slice(0, 5) || ''
-      const dayLabel = r.day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${r.day_of_month}`
-      message += `• ${dayLabel} ${r.title}${time ? ` (${time})` : ''}\n`
-    }
+    message += `\n📋 งานวันนี้ (${data.todayTasks.length} รายการ)\n`
+    data.todayTasks.forEach((t, i) => {
+      const time = t.due_time ? t.due_time.slice(0, 5) : null
+      message += `${i + 1}. ${t.title}\n`
+      if (time) message += `   🕐 กำหนด ${time} น.\n`
+      if (t.priority && t.priority !== 'low') message += `   ⚡ ความสำคัญ: ${t.priority === 'high' ? 'สูง' : 'ปานกลาง'}\n`
+      if (t.description) message += `   📝 ${t.description}\n`
+    })
   }
 
   // บันทึกล่าสุด
   if (data.recentNotes.length > 0) {
-    message += `\n🗒️ บันทึกล่าสุด\n`
-    for (const n of data.recentNotes) {
+    message += `\n🗒️ บันทึกล่าสุด (${data.recentNotes.length} รายการ)\n`
+    data.recentNotes.forEach((n, i) => {
       const cat = n.category ? ` [${n.category}]` : ''
-      message += `• ${n.title}${cat}\n`
-    }
+      message += `${i + 1}. ${n.title}${cat}\n`
+    })
   }
 
   // งานค้างรวม
   if (data.pendingTaskCount > data.todayTasks.length) {
-    message += `\n📝 งานค้างรวม ${data.pendingTaskCount} รายการ`
+    message += `\n⚠️ งานค้างรวมทั้งหมด: ${data.pendingTaskCount} รายการ`
   }
 
   // พรุ่งนี้
   const tomorrowAll = [
     ...data.tomorrowEvents.map(e => ({
       time: e.event_time?.slice(0, 5) || '',
-      label: e.title,
+      label: `📌 ${e.title}`,
+      loc: e.location && e.location !== 'ไม่มี' ? e.location : '',
     })),
     ...data.tomorrowRoutines.map(r => ({
       time: r.routine_time?.slice(0, 5) || '',
-      label: `กิจวัตร: ${r.title}`,
+      label: `⏰ ${r.title}`,
+      loc: '',
     })),
   ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'))
 
   if (tomorrowAll.length > 0) {
-    message += `\n\n🔜 พรุ่งนี้\n`
-    for (const item of tomorrowAll.slice(0, 5)) {
-      message += `• ${item.time ? item.time + ' ' : ''}${item.label}\n`
-    }
+    message += `\n\n🔜 พรุ่งนี้ (${tomorrowAll.length} รายการ)\n`
+    tomorrowAll.slice(0, 5).forEach((item, i) => {
+      message += `${i + 1}. ${item.label}\n`
+      if (item.time) message += `   🕐 เวลา ${item.time} น.\n`
+      if (item.loc) message += `   📍 ${item.loc}\n`
+    })
     if (tomorrowAll.length > 5) {
-      message += `  ...อีก ${tomorrowAll.length - 5} รายการ\n`
+      message += `   ...อีก ${tomorrowAll.length - 5} รายการ\n`
     }
   }
 
-  message += '\nขอให้เป็นวันที่ดีนะคะ!'
+  message += `\n━━━━━━━━━━━━━━━━━━\nขอให้เป็นวันที่ดีนะคะ! 💪`
   return message
 }
 
@@ -295,27 +330,51 @@ export function buildHourlyHeadsUpMessage(data: {
     data.upcomingRoutines.length + data.upcomingMonthlyRoutines.length
   if (total === 0) return null
 
-  let message = `🔔 อีก 1 ชั่วโมง!\n`
+  let message = `━━━━━━━━━━━━━━━━━━\n`
+  message += `🔔 แจ้งเตือนล่วงหน้า 1 ชม.\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
 
-  for (const e of data.upcomingEvents) {
-    const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
-    const loc = e.location && e.location !== 'ไม่มี' ? ` (${e.location})` : ''
-    message += `\n📌 ${e.title}${time ? ` — ${time}` : ''}${loc}`
+  let idx = 1
+  if (data.upcomingEvents.length > 0) {
+    message += `\n📌 นัดหมาย\n`
+    for (const e of data.upcomingEvents) {
+      const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
+      const loc = e.location && e.location !== 'ไม่มี' ? e.location : ''
+      message += `${idx}. ${e.title}\n`
+      if (time) message += `   🕐 เวลา ${time}\n`
+      if (loc) message += `   📍 ${loc}\n`
+      idx++
+    }
   }
 
-  for (const t of data.upcomingTasks) {
-    const time = t.due_time ? t.due_time.slice(0, 5) + ' น.' : ''
-    message += `\n📋 ${t.title}${time ? ` — ${time}` : ' — กำหนดวันนี้'}`
+  if (data.upcomingTasks.length > 0) {
+    message += `\n📋 งาน\n`
+    for (const t of data.upcomingTasks) {
+      const time = t.due_time ? t.due_time.slice(0, 5) + ' น.' : 'กำหนดวันนี้'
+      message += `${idx}. ${t.title}\n`
+      message += `   🕐 ${time}\n`
+      idx++
+    }
   }
 
-  for (const r of data.upcomingRoutines) {
-    const time = r.routine_time?.slice(0, 5) || ''
-    message += `\n⏰ ${r.title}${time ? ` — ${time} น.` : ''}`
+  if (data.upcomingRoutines.length > 0) {
+    message += `\n⏰ กิจวัตร\n`
+    for (const r of data.upcomingRoutines) {
+      const time = r.routine_time?.slice(0, 5) || ''
+      message += `${idx}. ${r.title}\n`
+      if (time) message += `   🕐 เวลา ${time} น.\n`
+      idx++
+    }
   }
 
-  for (const r of data.upcomingMonthlyRoutines) {
-    const time = r.routine_time?.slice(0, 5) || ''
-    message += `\n📅 ${r.title}${time ? ` — ${time} น.` : ''}`
+  if (data.upcomingMonthlyRoutines.length > 0) {
+    message += `\n📅 กิจวัตรรายเดือน\n`
+    for (const r of data.upcomingMonthlyRoutines) {
+      const time = r.routine_time?.slice(0, 5) || ''
+      message += `${idx}. ${r.title}\n`
+      if (time) message += `   🕐 เวลา ${time} น.\n`
+      idx++
+    }
   }
 
   return message
@@ -447,47 +506,57 @@ export async function sendWeeklySummaryToLine(lineUserId: string, userId?: strin
   if (userId) nextWeekQuery = nextWeekQuery.eq('user_id', userId)
   const { data: nextWeekEvents } = await nextWeekQuery
 
-  let message = `📊 สรุปรายสัปดาห์\n`
-  message += `${mondayStr} — ${sundayStr}\n`
+  const mondayLabel = formatThaiDate(mondayStr)
+  const sundayLabel = formatThaiDate(sundayStr)
+
+  let message = `━━━━━━━━━━━━━━━━━━\n`
+  message += `📊 สรุปรายสัปดาห์\n`
+  message += `📆 ${mondayLabel} — ${sundayLabel}\n`
+  message += `━━━━━━━━━━━━━━━━━━\n`
 
   if (events && events.length > 0) {
-    message += `\n📌 นัดหมาย ${events.length} รายการ\n`
-    for (const e of events) {
+    message += `\n📌 นัดหมาย (${events.length} รายการ)\n`
+    events.forEach((e, i) => {
       const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
-      message += `• ${e.event_date.slice(5)} ${e.title}`
-      if (time) message += ` (${time})`
+      const dateLabel = formatThaiDate(e.event_date)
+      message += `${i + 1}. ${e.title}\n`
+      message += `   📆 ${dateLabel}`
+      if (time) message += ` 🕐 ${time}`
       message += '\n'
-    }
+    })
   } else {
-    message += '\nสัปดาห์นี้ไม่มีนัดหมาย\n'
+    message += '\n✨ สัปดาห์นี้ไม่มีนัดหมาย\n'
   }
 
   if (completedTasks && completedTasks.length > 0) {
-    message += `\n✅ ทำเสร็จแล้ว ${completedTasks.length} รายการ\n`
-    for (const t of completedTasks) {
-      message += `• ${t.title}\n`
-    }
+    message += `\n✅ ทำเสร็จแล้ว (${completedTasks.length} รายการ)\n`
+    completedTasks.forEach((t, i) => {
+      message += `${i + 1}. ${t.title}\n`
+    })
   }
 
   if (pendingTasks && pendingTasks.length > 0) {
-    message += `\n📝 งานค้าง ${pendingTasks.length} รายการ\n`
-    for (const t of pendingTasks) {
-      const due = t.due_date ? ` (${t.due_date})` : ''
-      message += `• ${t.title}${due}\n`
-    }
+    message += `\n📝 งานค้าง (${pendingTasks.length} รายการ)\n`
+    pendingTasks.forEach((t, i) => {
+      const due = t.due_date ? formatThaiDate(t.due_date) : 'ไม่มีกำหนด'
+      message += `${i + 1}. ${t.title}\n`
+      message += `   📆 ${due}\n`
+    })
   }
 
   if (nextWeekEvents && nextWeekEvents.length > 0) {
-    message += `\n🔜 สัปดาห์หน้า ${nextWeekEvents.length} นัด\n`
-    for (const e of nextWeekEvents) {
+    message += `\n🔜 สัปดาห์หน้า (${nextWeekEvents.length} นัด)\n`
+    nextWeekEvents.forEach((e, i) => {
       const time = e.event_time ? e.event_time.slice(0, 5) + ' น.' : ''
-      message += `• ${e.event_date.slice(5)} ${e.title}`
-      if (time) message += ` (${time})`
+      const dateLabel = formatThaiDate(e.event_date)
+      message += `${i + 1}. ${e.title}\n`
+      message += `   📆 ${dateLabel}`
+      if (time) message += ` 🕐 ${time}`
       message += '\n'
-    }
+    })
   }
 
-  message += '\nสู้ๆ สัปดาห์หน้านะคะ!'
+  message += `\n━━━━━━━━━━━━━━━━━━\nสู้ๆ สัปดาห์หน้านะคะ! 💪`
 
   if (userId) {
     const eventCount = events?.length ?? 0

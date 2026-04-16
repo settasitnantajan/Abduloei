@@ -8,51 +8,8 @@ import { getUserMonthlyRoutines } from '@/app/actions/monthly-routines';
 import DashboardTabs from '@/components/dashboard/DashboardTabs';
 import Link from 'next/link';
 import { Calendar, CheckSquare, StickyNote, Repeat, CalendarDays } from 'lucide-react';
-import type { CalendarEvent } from '@/components/dashboard/CalendarView';
 
 export const dynamic = 'force-dynamic';
-
-// สร้างวันที่สำหรับ routines ที่ตรง days_of_week ใน N วันข้างหน้า
-function generateRoutineDates(routine: { days_of_week: number[] }, days: number): string[] {
-  const dates: string[] = [];
-  const now = new Date();
-  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-
-  for (let i = 0; i < days; i++) {
-    const d = new Date(bangkokNow);
-    d.setDate(bangkokNow.getDate() + i);
-    if (routine.days_of_week.includes(d.getDay())) {
-      dates.push(d.toLocaleDateString('en-CA'));
-    }
-  }
-  return dates;
-}
-
-// สร้างวันที่สำหรับ monthly routines ใน N เดือนข้างหน้า
-function generateMonthlyRoutineDates(routine: { day_of_month: number }, months: number): string[] {
-  const dates: string[] = [];
-  const now = new Date();
-  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-
-  for (let m = 0; m < months; m++) {
-    const year = bangkokNow.getFullYear();
-    const month = bangkokNow.getMonth() + m;
-    const d = new Date(year, month, 1);
-
-    if (routine.day_of_month === 32) {
-      // สิ้นเดือน
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      d.setDate(lastDay);
-    } else {
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      if (routine.day_of_month > lastDay) continue;
-      d.setDate(routine.day_of_month);
-    }
-
-    dates.push(d.toLocaleDateString('en-CA'));
-  }
-  return dates;
-}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -62,7 +19,7 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  // ดึงข้อมูลทั้งหมดพร้อมกัน
+  // ดึงข้อมูลทั้ง 3 แบบพร้อมกัน
   const [eventsResult, tasksResult, notesResult, routinesResult, monthlyRoutinesResult] = await Promise.all([
     getUserEvents(),
     getUserTasks(),
@@ -72,7 +29,7 @@ export default async function DashboardPage() {
   ]);
 
   // รวมทุกอย่างเป็น calendar events
-  const calendarEvents: CalendarEvent[] = [
+  const calendarEvents = [
     ...(eventsResult.events || []).map(e => ({
       id: e.id,
       title: e.title,
@@ -108,32 +65,6 @@ export default async function DashboardPage() {
       description: n.content,
       source_message: n.source_message,
     })),
-    // Routines: แปลง days_of_week → วันที่จริงใน 60 วันข้างหน้า
-    ...(routinesResult.routines || [])
-      .filter(r => r.is_active)
-      .flatMap(r => {
-        return generateRoutineDates(r, 60).map(dateStr => ({
-          id: `routine-${r.id}-${dateStr}`,
-          title: r.title,
-          date: dateStr,
-          time: r.routine_time?.slice(0, 5),
-          type: 'routine' as const,
-          description: r.description,
-        }));
-      }),
-    // Monthly Routines: แปลง day_of_month → วันที่จริง
-    ...(monthlyRoutinesResult.routines || [])
-      .filter(r => r.is_active)
-      .flatMap(r => {
-        return generateMonthlyRoutineDates(r, 3).map(dateStr => ({
-          id: `monthly-${r.id}-${dateStr}`,
-          title: r.title,
-          date: dateStr,
-          time: r.routine_time?.slice(0, 5),
-          type: 'monthly_routine' as const,
-          description: r.description,
-        }));
-      }),
   ];
 
   // นับสถิติ
@@ -143,93 +74,6 @@ export default async function DashboardPage() {
   const totalNotes = notesResult.notes?.length || 0;
   const activeRoutines = routinesResult.routines?.filter(r => r.is_active).length || 0;
   const activeMonthlyRoutines = monthlyRoutinesResult.routines?.filter(r => r.is_active).length || 0;
-
-  // เตรียม data สำหรับ TodayView
-  const now = new Date();
-  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-  const todayStr = bangkokNow.toLocaleDateString('en-CA');
-  const todayDow = bangkokNow.getDay();
-  const todayDom = bangkokNow.getDate();
-  const lastDayOfMonth = new Date(bangkokNow.getFullYear(), bangkokNow.getMonth() + 1, 0).getDate();
-  const isLastDay = todayDom === lastDayOfMonth;
-
-  const tomorrow = new Date(bangkokNow);
-  tomorrow.setDate(bangkokNow.getDate() + 1);
-  const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-  const tomorrowDow = tomorrow.getDay();
-
-  const todayEvents: CalendarEvent[] = (eventsResult.events || [])
-    .filter(e => e.event_date === todayStr)
-    .map(e => ({
-      id: e.id,
-      title: e.title,
-      date: e.event_date || '',
-      time: e.event_time?.slice(0, 5) || undefined,
-      priority: e.priority,
-      type: 'event' as const,
-      description: e.description,
-      status: e.status,
-    }));
-
-  const todayTasks: CalendarEvent[] = (tasksResult.tasks || [])
-    .filter(t => t.status === 'pending' && t.due_date === todayStr)
-    .map(t => ({
-      id: t.id,
-      title: t.title,
-      date: t.due_date || '',
-      time: t.due_time?.slice(0, 5) || undefined,
-      priority: t.priority,
-      type: 'task' as const,
-      description: t.description,
-      status: t.status,
-    }));
-
-  const todayRoutines: CalendarEvent[] = (routinesResult.routines || [])
-    .filter(r => r.is_active && r.days_of_week.includes(todayDow))
-    .map(r => ({
-      id: `routine-${r.id}-${todayStr}`,
-      title: r.title,
-      date: todayStr,
-      time: r.routine_time?.slice(0, 5),
-      type: 'routine' as const,
-      description: r.description,
-    }));
-
-  const matchDays = isLastDay ? [todayDom, 32] : [todayDom];
-  const todayMonthlyRoutines: CalendarEvent[] = (monthlyRoutinesResult.routines || [])
-    .filter(r => r.is_active && matchDays.includes(r.day_of_month))
-    .map(r => ({
-      id: `monthly-${r.id}-${todayStr}`,
-      title: r.title,
-      date: todayStr,
-      time: r.routine_time?.slice(0, 5),
-      type: 'monthly_routine' as const,
-      description: r.description,
-    }));
-
-  // พรุ่งนี้: events + routines
-  const tomorrowItems: CalendarEvent[] = [
-    ...(eventsResult.events || [])
-      .filter(e => e.event_date === tomorrowStr)
-      .map(e => ({
-        id: e.id,
-        title: e.title,
-        date: tomorrowStr,
-        time: e.event_time?.slice(0, 5) || undefined,
-        type: 'event' as const,
-        description: e.description,
-      })),
-    ...(routinesResult.routines || [])
-      .filter(r => r.is_active && r.days_of_week.includes(tomorrowDow))
-      .map(r => ({
-        id: `routine-${r.id}-${tomorrowStr}`,
-        title: r.title,
-        date: tomorrowStr,
-        time: r.routine_time?.slice(0, 5),
-        type: 'routine' as const,
-        description: r.description,
-      })),
-  ];
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-6">
@@ -289,15 +133,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* Calendar / Timeline / Today Tabs */}
-        <DashboardTabs
-          events={calendarEvents}
-          todayEvents={todayEvents}
-          todayTasks={todayTasks}
-          todayRoutines={todayRoutines}
-          todayMonthlyRoutines={todayMonthlyRoutines}
-          tomorrowItems={tomorrowItems}
-        />
+        {/* Calendar / Timeline Tabs */}
+        <DashboardTabs events={calendarEvents} />
       </div>
     </div>
   );
