@@ -45,11 +45,9 @@ export async function sendRoutineReminderToLine(
   const timeStr = routine.routine_time?.slice(0, 5) || ''
   const remindLabel = routine.remind_before_minutes > 0 ? ` (อีก ${routine.remind_before_minutes} นาที)` : ''
   let message = `⏰ กิจวัตรประจำสัปดาห์${remindLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📌 ${routine.title}\n`
-  message += `🕐 เวลา ${timeStr} น.\n`
-  if (routine.description) message += `📝 ${routine.description}\n`
-  message += `━━━━━━━━━━━━━━━━━━`
+  message += `🕐 เวลา ${timeStr} น.`
+  if (routine.description) message += `\n📝 ${routine.description}`
 
   const routineKey = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !routineNotifiedUsers.has(routineKey)) {
@@ -75,14 +73,11 @@ export async function sendEventReminderToLine(
 ) {
   const dateLabel = event.event_date ? formatThaiDate(event.event_date) : ''
   let message = `🔔 ${timeLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📌 ${event.title}\n`
   if (dateLabel) message += `📆 ${dateLabel}`
   if (event.event_time) message += ` 🕐 ${event.event_time.slice(0, 5)} น.`
-  message += '\n'
-  if (event.location && event.location !== 'ไม่มี') message += `📍 ${event.location}\n`
-  if (event.description) message += `📝 ${event.description}\n`
-  message += `━━━━━━━━━━━━━━━━━━`
+  if (event.location && event.location !== 'ไม่มี') message += `\n📍 ${event.location}`
+  if (event.description) message += `\n📝 ${event.description}`
 
   const eventKey = `${event.user_id}:${event.id}:${timeLabel}`
   if (event.user_id && !eventNotifiedUsers.has(eventKey)) {
@@ -118,11 +113,9 @@ export async function sendMonthlyRoutineReminderToLine(
   const dayLabel = routine.day_of_month === 32 ? 'สิ้นเดือน' : `ทุกวันที่ ${routine.day_of_month}`
   const remindLabel = routine.remind_before_minutes > 0 ? ` (อีก ${routine.remind_before_minutes} นาที)` : ''
   let message = `📅 กิจวัตรรายเดือน${remindLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📌 ${routine.title}\n`
-  message += `🕐 เวลา ${timeStr} น. (${dayLabel})\n`
-  if (routine.description) message += `📝 ${routine.description}\n`
-  message += `━━━━━━━━━━━━━━━━━━`
+  message += `🕐 เวลา ${timeStr} น. (${dayLabel})`
+  if (routine.description) message += `\n📝 ${routine.description}`
 
   const key = `${routine.user_id}:${routine.id}`
   if (routine.user_id && !monthlyRoutineNotifiedUsers.has(key)) {
@@ -154,13 +147,10 @@ export async function sendTaskReminderToLine(
 ) {
   const dateLabel = task.due_date ? formatThaiDate(task.due_date) : ''
   let message = `🔔 ${timeLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
   message += `📋 ${task.title}\n`
   if (dateLabel) message += `📆 ${dateLabel}`
   if (task.due_time) message += ` 🕐 ${task.due_time.slice(0, 5)} น.`
-  message += '\n'
-  if (task.description) message += `📝 ${task.description}\n`
-  message += `━━━━━━━━━━━━━━━━━━`
+  if (task.description) message += `\n📝 ${task.description}`
 
   const taskKey = `${task.user_id}:${task.id}:${timeLabel}`
   if (task.user_id && !taskNotifiedUsers.has(taskKey)) {
@@ -196,10 +186,8 @@ export function buildMorningSummaryMessage(data: Awaited<ReturnType<typeof fetch
   const bangkokNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
   const dayName = DAYS_TH[bangkokNow.getDay()]
 
-  let message = `━━━━━━━━━━━━━━━━━━\n`
-  message += `🌅 สรุปประจำวัน\n`
+  let message = `🌅 สรุปประจำวัน\n`
   message += `📆 วัน${dayName}ที่ ${dateLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
 
   const hasAnything = data.todayRoutines.length > 0 || data.todayEvents.length > 0 ||
     data.todayTasks.length > 0 || data.todayMonthlyRoutines.length > 0 ||
@@ -302,7 +290,7 @@ export function buildMorningSummaryMessage(data: Awaited<ReturnType<typeof fetch
     }
   }
 
-  message += `\n━━━━━━━━━━━━━━━━━━\nขอให้เป็นวันที่ดีนะคะ! 💪`
+  message += `\nขอให้เป็นวันที่ดีนะคะ! 💪`
   return message
 }
 
@@ -330,9 +318,7 @@ export function buildHourlyHeadsUpMessage(data: {
     data.upcomingRoutines.length + data.upcomingMonthlyRoutines.length
   if (total === 0) return null
 
-  let message = `━━━━━━━━━━━━━━━━━━\n`
-  message += `🔔 แจ้งเตือนล่วงหน้า 1 ชม.\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
+  let message = `🔔 แจ้งเตือนล่วงหน้า 1 ชม.\n`
 
   let idx = 1
   if (data.upcomingEvents.length > 0) {
@@ -509,10 +495,8 @@ export async function sendWeeklySummaryToLine(lineUserId: string, userId?: strin
   const mondayLabel = formatThaiDate(mondayStr)
   const sundayLabel = formatThaiDate(sundayStr)
 
-  let message = `━━━━━━━━━━━━━━━━━━\n`
-  message += `📊 สรุปรายสัปดาห์\n`
+  let message = `📊 สรุปรายสัปดาห์\n`
   message += `📆 ${mondayLabel} — ${sundayLabel}\n`
-  message += `━━━━━━━━━━━━━━━━━━\n`
 
   if (events && events.length > 0) {
     message += `\n📌 นัดหมาย (${events.length} รายการ)\n`
@@ -556,7 +540,7 @@ export async function sendWeeklySummaryToLine(lineUserId: string, userId?: strin
     })
   }
 
-  message += `\n━━━━━━━━━━━━━━━━━━\nสู้ๆ สัปดาห์หน้านะคะ! 💪`
+  message += `\nสู้ๆ สัปดาห์หน้านะคะ! 💪`
 
   if (userId) {
     const eventCount = events?.length ?? 0

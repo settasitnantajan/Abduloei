@@ -222,9 +222,7 @@ export async function GET(request: Request) {
               if (result.success) sent.push(`monthly: ${item.routine.title} → ${lineUserId.slice(0, 8)}`)
             }
           } else {
-            let message = `━━━━━━━━━━━━━━━━━━\n`
-            message += `⏰ กิจวัตรที่ต้องทำ!\n`
-            message += `━━━━━━━━━━━━━━━━━━\n`
+            let message = `⏰ กิจวัตรที่ต้องทำ!\n`
             allRoutineItems.forEach((item, i) => {
               const r = item.routine
               const timeStr = r.routine_time?.slice(0, 5) || ''

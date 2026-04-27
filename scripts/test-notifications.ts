@@ -17,10 +17,8 @@ const today = '2026-04-16'
 const dateLabel = formatThaiDate(today)
 const dayName = DAYS_TH[new Date('2026-04-16').getDay()]
 
-let msg1 = `━━━━━━━━━━━━━━━━━━\n`
-msg1 += `🌅 สรุปประจำวัน\n`
+let msg1 = `🌅 สรุปประจำวัน\n`
 msg1 += `📆 วัน${dayName}ที่ ${dateLabel}\n`
-msg1 += `━━━━━━━━━━━━━━━━━━\n`
 
 // กิจวัตรประจำวัน
 msg1 += `\n⏰ กิจวัตรประจำวัน (2 รายการ)\n`
@@ -73,7 +71,7 @@ msg1 += `   📍 บ้าน\n`
 msg1 += `2. ⏰ Shopee\n`
 msg1 += `   🕐 เวลา 12:00 น.\n`
 
-msg1 += `\n━━━━━━━━━━━━━━━━━━\nขอให้เป็นวันที่ดีนะคะ! 💪`
+msg1 += `\nขอให้เป็นวันที่ดีนะคะ! 💪`
 console.log(msg1)
 
 // ===== 2. สรุปประจำวัน (วันว่าง) =====
@@ -81,10 +79,8 @@ console.log('\n' + '='.repeat(50))
 console.log('📋 TEST 2: สรุปประจำวัน (วันว่าง)')
 console.log('='.repeat(50))
 
-let msg2 = `━━━━━━━━━━━━━━━━━━\n`
-msg2 += `🌅 สรุปประจำวัน\n`
+let msg2 = `🌅 สรุปประจำวัน\n`
 msg2 += `📆 วัน${dayName}ที่ ${dateLabel}\n`
-msg2 += `━━━━━━━━━━━━━━━━━━\n`
 msg2 += `\n✨ วันนี้ว่างๆ ไม่มีนัด ไม่มีงาน`
 msg2 += `\n\n📝 งานค้างรวม 2 รายการ`
 msg2 += `\n\nขอให้เป็นวันที่ดีนะคะ! 💪`
@@ -95,9 +91,7 @@ console.log('\n' + '='.repeat(50))
 console.log('📋 TEST 3: แจ้งเตือนล่วงหน้า 1 ชม.')
 console.log('='.repeat(50))
 
-let msg3 = `━━━━━━━━━━━━━━━━━━\n`
-msg3 += `🔔 แจ้งเตือนล่วงหน้า 1 ชม.\n`
-msg3 += `━━━━━━━━━━━━━━━━━━\n`
+let msg3 = `🔔 แจ้งเตือนล่วงหน้า 1 ชม.\n`
 msg3 += `\n📌 นัดหมาย\n`
 msg3 += `1. หมอฟัน\n`
 msg3 += `   🕐 เวลา 10:00 น.\n`
@@ -119,11 +113,9 @@ console.log('📋 TEST 4: Routine reminder (1 อัน)')
 console.log('='.repeat(50))
 
 let msg4 = `⏰ กิจวัตรประจำสัปดาห์\n`
-msg4 += `━━━━━━━━━━━━━━━━━━\n`
 msg4 += `📌 Shopee\n`
 msg4 += `🕐 เวลา 12:00 น.\n`
-msg4 += `📝 กด coin ที่ candy, กดติดตาม, กดที่ coin ที่ pet\n`
-msg4 += `━━━━━━━━━━━━━━━━━━`
+msg4 += `📝 กด coin ที่ candy, กดติดตาม, กดที่ coin ที่ pet`
 console.log(msg4)
 
 // ===== 5. Routine reminder (เตือนก่อน 15 นาที) =====
@@ -132,11 +124,9 @@ console.log('📋 TEST 5: Routine reminder (เตือนก่อน 15 น�
 console.log('='.repeat(50))
 
 let msg5a = `⏰ กิจวัตรประจำสัปดาห์ (อีก 15 นาที)\n`
-msg5a += `━━━━━━━━━━━━━━━━━━\n`
 msg5a += `📌 ออกกำลังกาย\n`
 msg5a += `🕐 เวลา 18:00 น.\n`
-msg5a += `📝 วิ่ง 5 กม.\n`
-msg5a += `━━━━━━━━━━━━━━━━━━`
+msg5a += `📝 วิ่ง 5 กม.`
 console.log(msg5a)
 
 // ===== 6. Monthly routine reminder =====
@@ -145,11 +135,9 @@ console.log('📋 TEST 6: Monthly routine reminder')
 console.log('='.repeat(50))
 
 let msg6 = `📅 กิจวัตรรายเดือน (อีก 30 นาที)\n`
-msg6 += `━━━━━━━━━━━━━━━━━━\n`
 msg6 += `📌 จ่ายค่าบ้าน\n`
 msg6 += `🕐 เวลา 22:00 น. (ทุกวันที่ 31)\n`
-msg6 += `📝 โอนผ่าน SCB\n`
-msg6 += `━━━━━━━━━━━━━━━━━━`
+msg6 += `📝 โอนผ่าน SCB`
 console.log(msg6)
 
 // ===== 7. Event reminder =====
@@ -158,12 +146,10 @@ console.log('📋 TEST 7: Event reminder')
 console.log('='.repeat(50))
 
 let msg7 = `🔔 อีก 1 ชั่วโมง!\n`
-msg7 += `━━━━━━━━━━━━━━━━━━\n`
 msg7 += `📌 หมอฟัน\n`
 msg7 += `📆 16 เม.ย. 🕐 10:00 น.\n`
 msg7 += `📍 โรงพยาบาลกรุงเทพ\n`
-msg7 += `📝 นัดทำฟัน\n`
-msg7 += `━━━━━━━━━━━━━━━━━━`
+msg7 += `📝 นัดทำฟัน`
 console.log(msg7)
 
 // ===== 8. Task reminder =====
@@ -172,11 +158,9 @@ console.log('📋 TEST 8: Task reminder')
 console.log('='.repeat(50))
 
 let msg8 = `🔔 อีก 1 ชั่วโมง!\n`
-msg8 += `━━━━━━━━━━━━━━━━━━\n`
 msg8 += `📋 ส่งรายงาน\n`
 msg8 += `📆 16 เม.ย. 🕐 17:00 น.\n`
-msg8 += `📝 ส่งให้หัวหน้า\n`
-msg8 += `━━━━━━━━━━━━━━━━━━`
+msg8 += `📝 ส่งให้หัวหน้า`
 console.log(msg8)
 
 // ===== 9. Combined routines =====
@@ -184,9 +168,7 @@ console.log('\n' + '='.repeat(50))
 console.log('📋 TEST 9: Combined routines (หลายอันพร้อมกัน)')
 console.log('='.repeat(50))
 
-let msg9 = `━━━━━━━━━━━━━━━━━━\n`
-msg9 += `⏰ กิจวัตรที่ต้องทำ!\n`
-msg9 += `━━━━━━━━━━━━━━━━━━\n`
+let msg9 = `⏰ กิจวัตรที่ต้องทำ!\n`
 msg9 += `\n1. ⏰ Shopee\n`
 msg9 += `   🕐 เวลา 12:00 น.\n`
 msg9 += `   📝 กด coin ที่ candy\n`
@@ -202,10 +184,8 @@ console.log('\n' + '='.repeat(50))
 console.log('📋 TEST 10: สรุปรายสัปดาห์')
 console.log('='.repeat(50))
 
-let msg10 = `━━━━━━━━━━━━━━━━━━\n`
-msg10 += `📊 สรุปรายสัปดาห์\n`
+let msg10 = `📊 สรุปรายสัปดาห์\n`
 msg10 += `📆 7 เม.ย. — 13 เม.ย.\n`
-msg10 += `━━━━━━━━━━━━━━━━━━\n`
 msg10 += `\n📌 นัดหมาย (2 รายการ)\n`
 msg10 += `1. หมอฟัน\n`
 msg10 += `   📆 9 เม.ย. 🕐 10:00 น.\n`
@@ -220,7 +200,7 @@ msg10 += `   📆 12 เม.ย.\n`
 msg10 += `\n🔜 สัปดาห์หน้า (1 นัด)\n`
 msg10 += `1. นัดช่างแอร์\n`
 msg10 += `   📆 15 เม.ย. 🕐 09:00 น.\n`
-msg10 += `\n━━━━━━━━━━━━━━━━━━\nสู้ๆ สัปดาห์หน้านะคะ! 💪`
+msg10 += `\nสู้ๆ สัปดาห์หน้านะคะ! 💪`
 console.log(msg10)
 
 console.log('\n' + '='.repeat(50))
