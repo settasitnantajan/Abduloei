@@ -2,14 +2,102 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getUserEvents } from '@/app/actions/events';
 import { getUserTasks } from '@/app/actions/tasks';
-import { getUserNotes } from '@/app/actions/notes';
 import { getUserRoutines } from '@/app/actions/routines';
 import { getUserMonthlyRoutines } from '@/app/actions/monthly-routines';
-import DashboardTabs from '@/components/dashboard/DashboardTabs';
-import Link from 'next/link';
-import { Calendar, CheckSquare, StickyNote, Repeat, CalendarDays } from 'lucide-react';
+import CountdownBoard from '@/components/dashboard/CountdownBoard';
+import {
+  bangkokToEpoch,
+  nextDailyOccurrence,
+  nextMonthlyOccurrence,
+  describeDays,
+  formatThaiDateTime,
+  type CountdownItem,
+} from '@/lib/utils/countdown';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * ดึงข้อมูลทุกชนิดแล้วแปลงเป็นรายการนับถอยหลังชุดเดียว
+ *
+ * แยกออกจาก component เพราะต้องอ่านนาฬิกา (Date.now) เพื่อหารอบถัดไปของกิจวัตร
+ * — งานที่ขึ้นกับเวลาแบบนี้ไม่ควรอยู่ใน render body
+ */
+async function buildCountdownItems(): Promise<CountdownItem[]> {
+  const [eventsResult, tasksResult, routinesResult, monthlyRoutinesResult] = await Promise.all([
+    getUserEvents(),
+    getUserTasks(),
+    getUserRoutines(),
+    getUserMonthlyRoutines(),
+  ]);
+
+  // ใช้เวลาเดียวกันตลอดการคำนวณ เพื่อให้ผลลัพธ์สอดคล้องกัน
+  const now = Date.now();
+  const items: CountdownItem[] = [];
+
+  // นัดหมาย — ต้องมีวันที่ถึงจะนับถอยหลังได้
+  for (const e of eventsResult.events || []) {
+    if (e.status === 'completed' || e.status === 'cancelled') continue;
+    const targetMs = bangkokToEpoch(e.event_date, e.event_time);
+    if (targetMs === null) continue;
+    items.push({
+      id: e.id,
+      title: e.title,
+      description: e.description,
+      kind: 'event',
+      targetMs,
+      scheduleLabel: formatThaiDateTime(targetMs),
+    });
+  }
+
+  // งาน — เฉพาะที่ยังไม่เสร็จและมีกำหนดส่ง
+  for (const t of tasksResult.tasks || []) {
+    if (t.status !== 'pending') continue;
+    const targetMs = bangkokToEpoch(t.due_date, t.due_time);
+    if (targetMs === null) continue;
+    items.push({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      kind: 'task',
+      targetMs,
+      scheduleLabel: formatThaiDateTime(targetMs),
+    });
+  }
+
+  // กิจวัตรรายวัน — คำนวณรอบถัดไปจากวันในสัปดาห์
+  for (const r of routinesResult.routines || []) {
+    if (!r.is_active) continue;
+    const targetMs = nextDailyOccurrence(r.routine_time, r.days_of_week, now);
+    if (targetMs === null) continue;
+    items.push({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      kind: 'routine',
+      targetMs,
+      scheduleLabel: `${describeDays(r.days_of_week)} · ${r.routine_time.slice(0, 5)}`,
+      remindBeforeMinutes: r.remind_before_minutes,
+    });
+  }
+
+  // กิจวัตรรายเดือน — คำนวณรอบถัดไปจากวันที่ของเดือน
+  for (const r of monthlyRoutinesResult.routines || []) {
+    if (!r.is_active) continue;
+    const targetMs = nextMonthlyOccurrence(r.routine_time, r.day_of_month, now);
+    if (targetMs === null) continue;
+    items.push({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      kind: 'monthly_routine',
+      targetMs,
+      scheduleLabel: `ทุกวันที่ ${r.day_of_month} · ${r.routine_time.slice(0, 5)}`,
+      remindBeforeMinutes: r.remind_before_minutes,
+    });
+  }
+
+  return items;
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -19,122 +107,12 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  // ดึงข้อมูลทั้ง 3 แบบพร้อมกัน
-  const [eventsResult, tasksResult, notesResult, routinesResult, monthlyRoutinesResult] = await Promise.all([
-    getUserEvents(),
-    getUserTasks(),
-    getUserNotes(),
-    getUserRoutines(),
-    getUserMonthlyRoutines(),
-  ]);
-
-  // รวมทุกอย่างเป็น calendar events
-  const calendarEvents = [
-    ...(eventsResult.events || []).map(e => ({
-      id: e.id,
-      title: e.title,
-      date: e.event_date || '',
-      time: e.event_time || undefined,
-      priority: e.priority,
-      type: 'event' as const,
-      description: e.description,
-      status: e.status,
-      source_message: e.source_message,
-      checklist_items: e.checklist_items?.map(ci => ({
-        id: ci.id,
-        title: ci.title,
-        completed: ci.completed,
-      })),
-    })),
-    ...(tasksResult.tasks || []).map(t => ({
-      id: t.id,
-      title: t.title,
-      date: t.due_date || t.created_at.split('T')[0],
-      time: t.due_time || undefined,
-      priority: t.priority,
-      type: 'task' as const,
-      description: t.description,
-      status: t.status,
-      source_message: t.source_message,
-    })),
-    ...(notesResult.notes || []).map(n => ({
-      id: n.id,
-      title: n.title,
-      date: n.created_at.split('T')[0],
-      type: 'note' as const,
-      description: n.content,
-      source_message: n.source_message,
-    })),
-  ];
-
-  // นับสถิติ
-  const totalEvents = eventsResult.events?.length || 0;
-  const totalTasks = tasksResult.tasks?.length || 0;
-  const pendingTasks = tasksResult.tasks?.filter(t => t.status === 'pending').length || 0;
-  const totalNotes = notesResult.notes?.length || 0;
-  const activeRoutines = routinesResult.routines?.filter(r => r.is_active).length || 0;
-  const activeMonthlyRoutines = monthlyRoutinesResult.routines?.filter(r => r.is_active).length || 0;
+  const items = await buildCountdownItems();
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-6">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">ภาพรวม</h1>
-          <p className="text-gray-400 text-sm">ภาพรวมกิจกรรมของคุณ</p>
-        </div>
-
-        {/* Stats — กดไปหน้าแต่ละโหมด */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-          <Link href="/events" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-[#00B900]/50 transition-colors">
-            <div className="w-10 h-10 rounded-lg bg-[#00B900]/20 flex items-center justify-center shrink-0">
-              <Calendar className="w-5 h-5 text-[#00B900]" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">{totalEvents}</p>
-              <p className="text-xs text-gray-500">นัดหมาย</p>
-            </div>
-          </Link>
-          <Link href="/tasks" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-blue-500/50 transition-colors">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
-              <CheckSquare className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">{pendingTasks}<span className="text-gray-500 text-sm font-normal">/{totalTasks}</span></p>
-              <p className="text-xs text-gray-500">งานรอทำ</p>
-            </div>
-          </Link>
-          <Link href="/notes" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-amber-500/50 transition-colors">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
-              <StickyNote className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">{totalNotes}</p>
-              <p className="text-xs text-gray-500">บันทึก</p>
-            </div>
-          </Link>
-          <Link href="/routines" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-purple-500/50 transition-colors">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
-              <Repeat className="w-5 h-5 text-purple-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">{activeRoutines}</p>
-              <p className="text-xs text-gray-500">กิจวัตร</p>
-            </div>
-          </Link>
-          <Link href="/monthly-routines" className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-4 flex items-center gap-3 hover:border-pink-500/50 transition-colors">
-            <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center shrink-0">
-              <CalendarDays className="w-5 h-5 text-pink-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">{activeMonthlyRoutines}</p>
-              <p className="text-xs text-gray-500">รายเดือน</p>
-            </div>
-          </Link>
-        </div>
-
-        {/* Calendar / Timeline Tabs */}
-        <DashboardTabs events={calendarEvents} />
+    <div className="min-h-screen bg-[#0B0B0C] text-white p-4 md:p-6">
+      <div className="max-w-2xl mx-auto">
+        <CountdownBoard items={items} />
       </div>
     </div>
   );
