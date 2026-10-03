@@ -184,6 +184,48 @@ export async function sendCardDueReminderToLine(
   return sendTextMessage(lineUserId, message)
 }
 
+const expiryNotifiedUsers = new Set<string>()
+
+export function resetExpiryTracking() {
+  expiryNotifiedUsers.clear()
+}
+
+/**
+ * แจ้งเตือนของใกล้หมดอายุ
+ *
+ * รวมหลายชิ้นเป็นข้อความเดียว ไม่ยิงทีละชิ้น เพราะของมักหมดอายุพร้อมกันหลายอย่าง
+ */
+export async function sendExpiryReminderToLine(
+  lineUserId: string,
+  userId: string,
+  items: Array<{ id: string; name: string; expires_on: string; daysLeft: number }>
+) {
+  if (items.length === 0) return { success: false, error: 'no items' }
+
+  const when = (daysLeft: number) =>
+    daysLeft === 0 ? 'หมดอายุวันนี้' : `อีก ${daysLeft} วัน`
+
+  let message = `\u{1F4E6} ของใกล้หมดอายุ\n`
+  items.forEach((item, i) => {
+    message += `\n${i + 1}. ${item.name}\n`
+    message += `   \u{1F5D3}\uFE0F ${when(item.daysLeft)}\n`
+  })
+
+  // กันบันทึก web notification ซ้ำเมื่อ user คนเดียวผูกหลาย LINE ID
+  const key = `${userId}:${items.map(i => i.id).join(',')}`
+  if (!expiryNotifiedUsers.has(key)) {
+    expiryNotifiedUsers.add(key)
+    const summary =
+      items.length === 1
+        ? `${items[0].name} — ${when(items[0].daysLeft)}`
+        : `${items.length} รายการใกล้หมดอายุ`
+    // ไม่ส่ง item.id เข้า eventId เพราะคอลัมน์นั้นเป็น FK ไปตาราง events
+    await saveWebNotification(userId, '\u{1F4E6} ของใกล้หมดอายุ', summary, 'item_expiry_reminder')
+  }
+
+  return sendTextMessage(lineUserId, truncateMessage(message))
+}
+
 const taskNotifiedUsers = new Set<string>()
 
 export function resetTaskReminderTracking() {

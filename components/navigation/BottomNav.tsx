@@ -12,6 +12,7 @@ import {
   Repeat,
   CalendarDays,
   Wallet,
+  PackageOpen,
   Settings,
 } from 'lucide-react';
 import { getUserEvents } from '@/app/actions/events';
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
   { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
   { id: 'finance', label: 'การเงิน', icon: Wallet, path: '/finance' },
+  { id: 'expiry', label: 'ของหมดอายุ', icon: PackageOpen, path: '/expiry', badgeColor: 'bg-orange-500' },
   { id: 'settings', label: 'ตั้งค่า', icon: Settings, path: '/settings' },
 ];
 

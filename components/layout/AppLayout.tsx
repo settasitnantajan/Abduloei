@@ -11,7 +11,7 @@ interface AppLayoutProps {
 }
 
 // Routes that should have navigation
-const navRoutes = ['/dashboard', '/events', '/tasks', '/notes', '/routines', '/monthly-routines', '/finance', '/chat', '/settings', '/profile'];
+const navRoutes = ['/dashboard', '/events', '/tasks', '/notes', '/routines', '/monthly-routines', '/finance', '/expiry', '/chat', '/settings', '/profile'];
 
 // Routes that should NOT have navigation (auth pages, etc.)
 const noNavRoutes = ['/login', '/forgot-password', '/reset-password', '/'];

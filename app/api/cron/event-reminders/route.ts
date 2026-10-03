@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendRoutineReminderToLine, sendMonthlyRoutineReminderToLine, sendHourlyHeadsUpToLine, sendUnifiedMorningSummaryToLine, sendWeeklySummaryToLine, sendCardDueReminderToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking, resetDailySummaryTracking, resetCardDueTracking } from '@/lib/line/notifications'
+import { sendRoutineReminderToLine, sendMonthlyRoutineReminderToLine, sendHourlyHeadsUpToLine, sendUnifiedMorningSummaryToLine, sendWeeklySummaryToLine, sendCardDueReminderToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking, resetDailySummaryTracking, resetCardDueTracking, sendExpiryReminderToLine, resetExpiryTracking } from '@/lib/line/notifications'
 import { fetchHourlyHeadsUpData } from '@/lib/line/timeline-data'
 import { fetchDueCards } from '@/lib/line/card-due-data'
+import { fetchExpiringItems, purgeExpiredItems } from '@/lib/line/expiry-data'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 import { getMemberLineId } from '@/lib/db/home-members'
 import { sendTextMessage } from '@/lib/line/client'
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
   resetTaskReminderTracking()
   resetMonthlyRoutineTracking()
   resetCardDueTracking()
+  resetExpiryTracking()
   memberLineCache.clear()
   const sent: string[] = []
 
@@ -291,6 +293,43 @@ export async function GET(request: Request) {
         // บันทึกไว้แล้วไปต่อ ไม่ให้กระทบการแจ้งเตือนส่วนอื่นที่ทำงานดีอยู่
         console.error('[CRON] Card due reminder error:', cardError)
       }
+
+      // === แจ้งเตือนของใกล้หมดอายุ ===
+      // ครอบ try/catch แยกด้วยเหตุผลเดียวกับบล็อกบัตร
+      try {
+        const { items: expiringItems, todayDateStr } = await fetchExpiringItems(userId)
+
+        if (expiringItems.length > 0) {
+          let delivered = false
+          for (const lineUserId of lineIds) {
+            const result = await sendExpiryReminderToLine(lineUserId, userId, expiringItems)
+            if (result.success) {
+              delivered = true
+              sent.push(`expiry: ${expiringItems.length} รายการ → ${lineUserId.slice(0, 8)}`)
+            }
+          }
+
+          // บันทึกว่าเตือนแล้ววันนี้ เฉพาะเมื่อส่งสำเร็จ
+          // ส่งไม่สำเร็จปล่อยให้รอบถัดไปลองใหม่ ไม่เงียบหายทั้งวัน
+          if (delivered) {
+            await adminClient
+              .from('expiry_items')
+              .update({ last_reminded_date: todayDateStr })
+              .in('id', expiringItems.map(i => i.id))
+          }
+        }
+      } catch (expiryError) {
+        console.error('[CRON] Expiry reminder error:', expiryError)
+      }
+    }
+
+    // === กวาดของที่หมดอายุเกินกำหนดเก็บ (30 วัน) ===
+    // ทำนอกลูป user เพราะลบทีเดียวทั้งระบบ และไม่ขึ้นกับ LINE ที่ผูกไว้
+    try {
+      const purged = await purgeExpiredItems()
+      if (purged > 0) sent.push(`purged: ${purged} รายการหมดอายุเกิน 30 วัน`)
+    } catch (purgeError) {
+      console.error('[CRON] Purge expired items error:', purgeError)
     }
 
     return NextResponse.json({ message: 'All reminders processed', sent, usersCount: uniqueUserIds.length })
