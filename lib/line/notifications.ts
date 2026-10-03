@@ -134,6 +134,56 @@ export async function sendMonthlyRoutineReminderToLine(
   return sendTextMessage(lineUserId, message)
 }
 
+const cardDueNotifiedUsers = new Set<string>()
+
+export function resetCardDueTracking() {
+  cardDueNotifiedUsers.clear()
+}
+
+/**
+ * แจ้งเตือนบัตรเครดิตใกล้ครบชำระ
+ *
+ * ส่งให้เจ้าของบัตรเท่านั้น (ตัวกรองอยู่ฝั่ง cron ผ่าน shouldSendTo)
+ * ยอดที่แจ้งคือยอดรวมของเดือนปัจจุบัน รวมงวดผ่อนของเดือนนั้นด้วย
+ */
+export async function sendCardDueReminderToLine(
+  lineUserId: string,
+  card: {
+    id: string
+    user_id?: string
+    name: string
+    last4?: string | null
+    due_day_of_month: number
+  },
+  amount: number,
+  daysLeft: number
+) {
+  const cardLabel = card.last4 ? `${card.name} ••••${card.last4}` : card.name
+  const dayLabel = card.due_day_of_month === 32 ? 'สิ้นเดือน' : `วันที่ ${card.due_day_of_month}`
+  const whenLabel = daysLeft === 0 ? 'ครบชำระวันนี้' : `ครบชำระอีก ${daysLeft} วัน`
+
+  let message = `💳 บัตรใกล้ครบชำระ\n`
+  message += `📌 ${cardLabel}\n`
+  message += `🗓️ ${whenLabel} (${dayLabel} ของเดือน)`
+  if (amount > 0) {
+    message += `\n💰 ยอดเดือนนี้ ฿${amount.toLocaleString('en-US')}`
+  }
+
+  // กันบันทึก web notification ซ้ำเมื่อ user คนเดียวผูกหลาย LINE ID
+  const key = `${card.user_id}:${card.id}:${daysLeft}`
+  if (card.user_id && !cardDueNotifiedUsers.has(key)) {
+    cardDueNotifiedUsers.add(key)
+    const webMsg =
+      amount > 0
+        ? `${whenLabel} (${dayLabel}) — ยอด ฿${amount.toLocaleString('en-US')}`
+        : `${whenLabel} (${dayLabel})`
+    // ไม่ส่ง card.id เข้า eventId เพราะคอลัมน์นั้นเป็น FK ไปตาราง events
+    await saveWebNotification(card.user_id, `💳 ${cardLabel}`, webMsg, 'card_due_reminder')
+  }
+
+  return sendTextMessage(lineUserId, message)
+}
+
 const taskNotifiedUsers = new Set<string>()
 
 export function resetTaskReminderTracking() {

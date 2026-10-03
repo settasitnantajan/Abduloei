@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase/admin'
-import { sendRoutineReminderToLine, sendMonthlyRoutineReminderToLine, sendHourlyHeadsUpToLine, sendUnifiedMorningSummaryToLine, sendWeeklySummaryToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking, resetDailySummaryTracking } from '@/lib/line/notifications'
+import { sendRoutineReminderToLine, sendMonthlyRoutineReminderToLine, sendHourlyHeadsUpToLine, sendUnifiedMorningSummaryToLine, sendWeeklySummaryToLine, sendCardDueReminderToLine, resetReminderTracking, resetTaskReminderTracking, resetMonthlyRoutineTracking, resetDailySummaryTracking, resetCardDueTracking } from '@/lib/line/notifications'
 import { fetchHourlyHeadsUpData } from '@/lib/line/timeline-data'
+import { fetchDueCards } from '@/lib/line/card-due-data'
 import { getAllLinkedUsers } from '@/lib/db/line-linking'
 import { getMemberLineId } from '@/lib/db/home-members'
 import { sendTextMessage } from '@/lib/line/client'
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
   resetReminderTracking()
   resetTaskReminderTracking()
   resetMonthlyRoutineTracking()
+  resetCardDueTracking()
   memberLineCache.clear()
   const sent: string[] = []
 
@@ -254,6 +256,40 @@ export async function GET(request: Request) {
         if (monthlyIds.length > 0) {
           await adminClient.from('monthly_routines').update({ last_reminded_date: headsUpData.todayDateStr }).in('id', monthlyIds)
         }
+      }
+
+      // === แจ้งเตือนบัตรเครดิตใกล้ครบชำระ ===
+      // ครอบ try/catch แยกของตัวเอง เพราะถ้า throw ออกไปถึง catch ด้านนอก
+      // จะทำให้การแจ้งเตือน event/task ของ user ที่เหลือไม่ถูกส่งทั้งหมด
+      try {
+        const { cards: dueCards, todayDateStr } = await fetchDueCards(userId)
+
+        for (const card of dueCards) {
+          let delivered = false
+
+          for (const lineUserId of lineIds) {
+            // ส่งเฉพาะเจ้าของบัตร — บัตรที่ไม่ระบุเจ้าของจะส่งให้ทุกคนในบ้าน
+            if (!(await shouldSendTo(card.owner_member_id, lineUserId))) continue
+
+            const result = await sendCardDueReminderToLine(lineUserId, card, card.amount, card.daysLeft)
+            if (result.success) {
+              delivered = true
+              sent.push(`card: ${card.name} (อีก ${card.daysLeft} วัน) → ${lineUserId.slice(0, 8)}`)
+            }
+          }
+
+          // บันทึกว่าเตือนแล้ววันนี้ เฉพาะเมื่อส่งสำเร็จอย่างน้อย 1 ปลายทาง
+          // ถ้าส่งไม่สำเร็จจะปล่อยให้รอบถัดไปลองใหม่ ไม่เงียบหายไปทั้งวัน
+          if (delivered) {
+            await adminClient
+              .from('credit_cards')
+              .update({ last_reminded_date: todayDateStr })
+              .eq('id', card.id)
+          }
+        }
+      } catch (cardError) {
+        // บันทึกไว้แล้วไปต่อ ไม่ให้กระทบการแจ้งเตือนส่วนอื่นที่ทำงานดีอยู่
+        console.error('[CRON] Card due reminder error:', cardError)
       }
     }
 

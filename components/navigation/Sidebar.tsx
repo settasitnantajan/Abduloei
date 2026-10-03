@@ -14,7 +14,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Repeat,
-  CalendarDays
+  CalendarDays,
+  Wallet
 } from 'lucide-react';
 import HomeSelector from '@/components/homes/HomeSelector';
 import { Separator } from '@/components/ui/separator';
@@ -40,6 +41,7 @@ const mainNavItems: NavItem[] = [
   { id: 'notes', label: 'บันทึก', icon: StickyNote, path: '/notes', badgeColor: 'bg-amber-500' },
   { id: 'routines', label: 'กิจวัตร', icon: Repeat, path: '/routines', badgeColor: 'bg-purple-500' },
   { id: 'monthly-routines', label: 'รายเดือน', icon: CalendarDays, path: '/monthly-routines', badgeColor: 'bg-pink-500' },
+  { id: 'finance', label: 'การเงิน', icon: Wallet, path: '/finance' },
   { id: 'chat', label: 'แชท', icon: MessageCircle, path: '/chat' },
 ];
 
