@@ -57,6 +57,10 @@ export async function GET(request: Request) {
   const currentMinute = bangkokNow.getMinutes()
   const currentDay = bangkokNow.getDay() // 0=อาทิตย์
 
+  // แจ้งเตือนที่ใช้ last_reminded_date กันซ้ำ จะส่งได้วันละครั้งอยู่แล้ว
+  // จึงเช็คเฉพาะรอบ 09:00 แทนที่จะ query ทุกรอบ (ลด Disk IO)
+  const isDailyWindow = currentHour === 9 && currentMinute <= 5
+
   try {
     // === สรุปประจำวัน: ส่งช่วง 09:00-09:05 ===
     if (currentHour === 9 && currentMinute <= 5) {
@@ -260,10 +264,10 @@ export async function GET(request: Request) {
         }
       }
 
-      // === แจ้งเตือนบัตรเครดิตใกล้ครบชำระ ===
+      // === แจ้งเตือนบัตรเครดิตใกล้ครบชำระ (รอบ 09:00 เท่านั้น) ===
       // ครอบ try/catch แยกของตัวเอง เพราะถ้า throw ออกไปถึง catch ด้านนอก
       // จะทำให้การแจ้งเตือน event/task ของ user ที่เหลือไม่ถูกส่งทั้งหมด
-      try {
+      if (isDailyWindow) try {
         const { cards: dueCards, todayDateStr } = await fetchDueCards(userId)
 
         for (const card of dueCards) {
@@ -294,9 +298,9 @@ export async function GET(request: Request) {
         console.error('[CRON] Card due reminder error:', cardError)
       }
 
-      // === แจ้งเตือนของใกล้หมดอายุ ===
+      // === แจ้งเตือนของใกล้หมดอายุ (รอบ 09:00 เท่านั้น) ===
       // ครอบ try/catch แยกด้วยเหตุผลเดียวกับบล็อกบัตร
-      try {
+      if (isDailyWindow) try {
         const { items: expiringItems, todayDateStr } = await fetchExpiringItems(userId)
 
         if (expiringItems.length > 0) {
@@ -323,9 +327,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // === กวาดของที่หมดอายุเกินกำหนดเก็บ (30 วัน) ===
+    // === กวาดของที่หมดอายุเกินกำหนดเก็บ (30 วัน) — รอบ 09:00 เท่านั้น ===
     // ทำนอกลูป user เพราะลบทีเดียวทั้งระบบ และไม่ขึ้นกับ LINE ที่ผูกไว้
-    try {
+    if (isDailyWindow) try {
       const purged = await purgeExpiredItems()
       if (purged > 0) sent.push(`purged: ${purged} รายการหมดอายุเกิน 30 วัน`)
     } catch (purgeError) {
