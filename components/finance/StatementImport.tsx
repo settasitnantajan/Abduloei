@@ -6,7 +6,7 @@ import { FileUp, Loader2, Trash2, X, AlertTriangle, Check, Lock } from 'lucide-r
 import { toast } from 'sonner';
 import { createExpensesBulk, findDuplicates } from '@/app/actions/finance';
 import { isEncryptedPdfFile } from '@/lib/finance/pdf-encrypted';
-import type { CreditCard } from '@/lib/types/finance';
+import type { CreditCard, FinanceMember } from '@/lib/types/finance';
 
 /** รายการที่ AI อ่านได้ 1 รายการ พร้อมสถานะที่ผู้ใช้แก้ได้ */
 interface DraftRow {
@@ -85,6 +85,8 @@ function dupKey(date: string, amount: number, title: string): string {
 
 interface StatementImportProps {
   cards: CreditCard[];
+  /** สมาชิกในบ้าน — ใช้ถามว่าใครหารตั้งแต่ตอนนำเข้า */
+  members: FinanceMember[];
   /** บัตรตั้งต้น — มีค่าเมื่อกดจากในบัตรใบนั้น */
   defaultCardId?: string;
   onClose: () => void;
@@ -100,11 +102,14 @@ interface StatementImportProps {
  */
 export default function StatementImport({
   cards,
+  members,
   defaultCardId,
   onClose,
 }: StatementImportProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // ตั้งต้นหารกันทุกคน เพราะรายจ่ายในบ้านส่วนใหญ่หารกัน — เปลี่ยนได้ก่อนบันทึก
+  const [sharedBy, setSharedBy] = useState<string[]>(() => members.map(m => m.id));
 
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [rows, setRows] = useState<DraftRow[] | null>(null);
@@ -330,6 +335,7 @@ export default function StatementImport({
 
       let saved = 0;
       const failures: string[] = [];
+      const savedKeys: string[] = [];
 
       for (const [cardId, items] of byCard) {
         const result = await createExpensesBulk(
@@ -339,10 +345,13 @@ export default function StatementImport({
             amount: i.amount,
             spentOn: i.date,
             icon: i.icon,
+            sharedBy,
           }))
         );
         if (result.success) {
           saved += result.inserted ?? items.length;
+          // เอาแถวที่บันทึกแล้วออก ไม่งั้นกดบันทึกซ้ำจะได้ข้อมูลซ้ำ
+          savedKeys.push(...items.map(i => i.key));
         } else {
           const card = cards.find(c => c.id === cardId);
           failures.push(`${card ? cardLabel(card) : 'บัตร'}: ${result.error}`);
@@ -353,8 +362,15 @@ export default function StatementImport({
         toast.success(`บันทึก ${saved} รายการแล้ว`);
         router.refresh();
       }
+
       if (failures.length > 0) {
-        setError(failures.join(' · '));
+        // เหลือเฉพาะแถวที่ยังไม่สำเร็จ ให้กดบันทึกซ้ำได้โดยไม่ซ้ำของเดิม
+        setRows(prev => (prev ?? []).filter(r => !savedKeys.includes(r.key)));
+        setError(
+          `${failures.join(' · ')}${
+            saved > 0 ? ` — บันทึกไปแล้ว ${saved} รายการ เหลือเฉพาะที่ยังไม่สำเร็จ` : ''
+          }`
+        );
         return;
       }
       onClose();
@@ -515,28 +531,68 @@ export default function StatementImport({
               )}
 
               {rows.length > 0 && (
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleAll(true)}
-                      className="text-gray-400 hover:text-[#00B900] transition-colors"
-                    >
-                      เลือกทั้งหมด
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleAll(false)}
-                      className="text-gray-400 hover:text-[#00B900] transition-colors"
-                    >
-                      ไม่เลือกเลย
-                    </button>
+                <>
+                  {/* ตั้งผู้ร่วมหารทีเดียวทั้งใบ — ไม่งั้นนำเข้า 26 รายการได้ของค้าง 26 อัน */}
+                  <div className="rounded-lg border border-[#2E2E33] bg-[#141416] p-3">
+                    <p className="text-xs text-gray-300 mb-2">
+                      ทุกรายการที่นำเข้าให้ใครหารบ้าง
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {members.map(m => {
+                        const on = sharedBy.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() =>
+                              setSharedBy(prev =>
+                                prev.includes(m.id)
+                                  ? prev.filter(x => x !== m.id)
+                                  : [...prev, m.id]
+                              )
+                            }
+                            aria-pressed={on}
+                            className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors cursor-pointer ${
+                              on
+                                ? 'bg-[#00B900]/15 border-[#00B900]/60 text-[#00B900]'
+                                : 'bg-[#1F1F22] border-[#3A3A40] text-gray-400 hover:border-[#00B900]/40'
+                            }`}
+                          >
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {sharedBy.length === 0 && (
+                      <p className="text-[0.65rem] text-[#F5A524] mt-2">
+                        ไม่เลือกใครเลย = ต้องมาระบุทีหลังทีละรายการ
+                      </p>
+                    )}
                   </div>
-                  <span className="text-gray-400 tabular-nums">
-                    เลือก {selected.length}/{rows.length} · รวม{' '}
-                    <span className="text-white font-semibold">{baht(selectedTotal)}</span>
-                  </span>
-                </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleAll(true)}
+                        className="text-gray-400 hover:text-[#00B900] transition-colors cursor-pointer"
+                      >
+                        เลือกทั้งหมด
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleAll(false)}
+                        className="text-gray-400 hover:text-[#00B900] transition-colors cursor-pointer"
+                      >
+                        ไม่เลือกเลย
+                      </button>
+                    </div>
+                    <span className="text-gray-400 tabular-nums">
+                      เลือก {selected.length}/{rows.length} · รวม{' '}
+                      <span className="text-white font-semibold">{baht(selectedTotal)}</span>
+                    </span>
+                  </div>
+                </>
               )}
 
               <div className="space-y-2">
@@ -645,9 +701,20 @@ export default function StatementImport({
         <div className="flex gap-3 p-5 border-t border-[#2A2A2A] shrink-0">
           <button
             type="button"
-            onClick={rows ? () => setRows(null) : onClose}
+            onClick={() => {
+              if (!rows) return onClose();
+              // ย้อนกลับ = ทิ้งผลที่ AI อ่านมาทั้งหมด ต้องอัปโหลดใหม่ จึงถามก่อน
+              if (
+                window.confirm(
+                  `ทิ้งรายการที่อ่านมา ${rows.length} รายการ แล้วกลับไปเลือกไฟล์ใหม่?`
+                )
+              ) {
+                setRows(null);
+                setError(null);
+              }
+            }}
             disabled={isReading || isSaving}
-            className="flex-1 h-10 rounded-lg border border-[#333338] text-gray-300 text-sm font-medium hover:bg-[#2A2A2A] disabled:opacity-50 transition-colors"
+            className="flex-1 h-11 rounded-lg border border-[#333338] text-gray-300 text-sm font-medium hover:bg-[#2A2A2A] disabled:opacity-50 transition-colors cursor-pointer"
           >
             {rows ? 'ย้อนกลับ' : 'ยกเลิก'}
           </button>

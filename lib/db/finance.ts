@@ -387,6 +387,8 @@ export interface ExpenseInput {
   /** YYYY-MM-DD (ค.ศ.) */
   spentOn: string
   icon?: string | null
+  /** คนที่ร่วมหารรายการนี้ — ถามตั้งแต่ตอนสร้างจะได้ไม่มีรายการค้าง */
+  sharedBy?: string[]
 }
 
 export async function createExpense(input: ExpenseInput): Promise<MutationResult> {
@@ -394,28 +396,45 @@ export async function createExpense(input: ExpenseInput): Promise<MutationResult
   if (!ctx) return { success: false, error: AUTH_ERROR }
 
   if (!input.title?.trim()) return { success: false, error: 'กรุณาใส่ชื่อรายการ' }
-  if (!Number.isFinite(input.amount) || input.amount < 0) {
-    return { success: false, error: 'จำนวนเงินต้องเป็นตัวเลขที่ไม่ติดลบ' }
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { success: false, error: 'จำนวนเงินต้องมากกว่า 0' }
   }
   // ตรงกับ CHECK constraint ในตาราง — เช็กที่นี่ด้วยเพื่อได้ข้อความไทยที่อ่านรู้เรื่อง
   if (input.channel === 'credit_card' && !input.cardId) {
     return { success: false, error: 'กรุณาเลือกบัตรที่ใช้จ่าย' }
   }
 
-  const { error } = await ctx.supabase.from('finance_expenses').insert({
-    user_id: ctx.userId,
-    title: input.title.trim(),
-    amount: input.amount,
-    paid_by_member_id: input.paidByMemberId || null,
-    channel: input.channel,
-    card_id: input.channel === 'credit_card' ? input.cardId : null,
-    spent_on: input.spentOn,
-    icon: input.icon || null,
-  })
+  const { data: created, error } = await ctx.supabase
+    .from('finance_expenses')
+    .insert({
+      user_id: ctx.userId,
+      title: input.title.trim(),
+      amount: input.amount,
+      paid_by_member_id: input.paidByMemberId || null,
+      channel: input.channel,
+      card_id: input.channel === 'credit_card' ? input.cardId : null,
+      spent_on: input.spentOn,
+      icon: input.icon || null,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    console.error('[Finance] createExpense error:', error.message)
+  if (error || !created) {
+    console.error('[Finance] createExpense error:', error?.message)
     return { success: false, error: 'เพิ่มรายการไม่สำเร็จ' }
+  }
+
+  // ผู้ร่วมหารเขียนแยกตาราง — ล้มตรงนี้ไม่ควรทำให้รายการที่สร้างแล้วหายไป
+  const shared = [...new Set((input.sharedBy ?? []).filter(Boolean))]
+  if (shared.length > 0) {
+    const { error: shareError } = await ctx.supabase
+      .from('expense_shares')
+      .insert(shared.map(memberId => ({ expense_id: created.id, member_id: memberId })))
+
+    if (shareError) {
+      console.error('[Finance] createExpense shares error:', shareError.message)
+      return { success: true, error: 'บันทึกรายการแล้ว แต่ตั้งผู้ร่วมหารไม่สำเร็จ' }
+    }
   }
   return { success: true }
 }
@@ -428,7 +447,14 @@ export async function createExpense(input: ExpenseInput): Promise<MutationResult
  */
 export async function createExpensesBulk(
   cardId: string,
-  items: Array<{ title: string; amount: number; spentOn: string; icon?: string | null }>
+  items: Array<{
+    title: string
+    amount: number
+    spentOn: string
+    icon?: string | null
+    /** คนที่ร่วมหารรายการนี้ — ตั้งตั้งแต่ตอนนำเข้าจะได้ไม่ต้องมาไล่กดทีหลัง */
+    sharedBy?: string[]
+  }>
 ): Promise<MutationResult & { inserted?: number }> {
   const ctx = await withUser()
   if (!ctx) return { success: false, error: AUTH_ERROR }
@@ -451,6 +477,9 @@ export async function createExpensesBulk(
   }
 
   const rows = []
+  // ผู้ร่วมหารของแต่ละแถว เรียงตรงกับ rows เพื่อจับคู่กับ id ที่ได้กลับมา
+  const sharesPerRow: string[][] = []
+
   for (const item of items) {
     const title = item.title?.trim()
     if (!title) continue
@@ -468,19 +497,46 @@ export async function createExpensesBulk(
       spent_on: item.spentOn,
       icon: item.icon || null,
     })
+    sharesPerRow.push([...new Set((item.sharedBy ?? []).filter(Boolean))])
   }
 
   if (rows.length === 0) {
     return { success: false, error: 'ไม่มีรายการที่ข้อมูลครบพอจะบันทึก' }
   }
 
-  const { error } = await ctx.supabase.from('finance_expenses').insert(rows)
+  const { data: created, error } = await ctx.supabase
+    .from('finance_expenses')
+    .insert(rows)
+    .select('id')
 
-  if (error) {
-    console.error('[Finance] createExpensesBulk error:', error.message)
+  if (error || !created) {
+    console.error('[Finance] createExpensesBulk error:', error?.message)
     return { success: false, error: 'บันทึกรายการไม่สำเร็จ' }
   }
-  return { success: true, inserted: rows.length }
+
+  // Supabase คืน id เรียงตามลำดับที่ส่งไป จึงจับคู่ตาม index ได้
+  const shareRows = created.flatMap((row, index) =>
+    (sharesPerRow[index] ?? []).map(memberId => ({
+      expense_id: row.id as string,
+      member_id: memberId,
+    }))
+  )
+
+  if (shareRows.length > 0) {
+    const { error: shareError } = await ctx.supabase
+      .from('expense_shares')
+      .insert(shareRows)
+
+    if (shareError) {
+      console.error('[Finance] createExpensesBulk shares error:', shareError.message)
+      return {
+        success: true,
+        inserted: created.length,
+        error: 'บันทึกรายการแล้ว แต่ตั้งผู้ร่วมหารไม่สำเร็จ',
+      }
+    }
+  }
+  return { success: true, inserted: created.length }
 }
 
 export async function updateExpense(
@@ -658,6 +714,68 @@ export async function setShares(
   return { success: true }
 }
 
+/**
+ * ตั้งผู้ร่วมหารให้หลายรายการพร้อมกัน
+ *
+ * ใบแจ้งยอดใบหนึ่งมีได้หลายสิบรายการ การกดทีละรายการช้าเกินไป
+ * ฟังก์ชันนี้ยิงครั้งเดียวจบ แทนการวน setShares ทีละอัน
+ */
+export async function setSharesBulk(
+  kind: ShareKind,
+  itemIds: string[],
+  memberIds: string[]
+): Promise<MutationResult & { updated?: number }> {
+  const ctx = await withUser()
+  if (!ctx) return { success: false, error: AUTH_ERROR }
+
+  const table = SHARE_TABLES[kind]
+  if (!table) return { success: false, error: 'ชนิดรายการไม่ถูกต้อง' }
+
+  const ids = [...new Set(itemIds.filter(Boolean))]
+  if (ids.length === 0) return { success: false, error: 'ไม่มีรายการให้บันทึก' }
+  if (ids.length > 300) return { success: false, error: 'รายการมากเกินไป (เกิน 300 รายการ)' }
+
+  // คัดเฉพาะรายการที่เป็นของผู้ใช้คนนี้จริง — ไม่พึ่ง RLS อย่างเดียว
+  const { data: owned, error: ownedError } = await ctx.supabase
+    .from(table.parent)
+    .select('id')
+    .eq('user_id', ctx.userId)
+    .in('id', ids)
+
+  if (ownedError) {
+    console.error('[Finance] setSharesBulk select error:', ownedError.message)
+    return { success: false, error: 'บันทึกผู้ร่วมหารไม่สำเร็จ' }
+  }
+
+  const ownedIds = (owned || []).map(r => r.id as string)
+  if (ownedIds.length === 0) return { success: false, error: 'ไม่พบรายการที่เลือก' }
+
+  const { error: deleteError } = await ctx.supabase
+    .from(table.shares)
+    .delete()
+    .in(table.fk, ownedIds)
+
+  if (deleteError) {
+    console.error('[Finance] setSharesBulk delete error:', deleteError.message)
+    return { success: false, error: 'บันทึกผู้ร่วมหารไม่สำเร็จ' }
+  }
+
+  const unique = [...new Set(memberIds.filter(Boolean))]
+  if (unique.length === 0) return { success: true, updated: ownedIds.length }
+
+  const rows = ownedIds.flatMap(itemId =>
+    unique.map(memberId => ({ [table.fk]: itemId, member_id: memberId }))
+  )
+
+  const { error: insertError } = await ctx.supabase.from(table.shares).insert(rows)
+
+  if (insertError) {
+    console.error('[Finance] setSharesBulk insert error:', insertError.message)
+    return { success: false, error: 'บันทึกผู้ร่วมหารไม่สำเร็จ' }
+  }
+  return { success: true, updated: ownedIds.length }
+}
+
 // ---------------------------------------------------------------------------
 // ผ่อนชำระ
 // ---------------------------------------------------------------------------
@@ -672,6 +790,8 @@ export interface InstallmentInput {
   /** null = จ่ายครั้งเดียว ไม่มีงวด */
   totalInstallments: number | null
   icon?: string | null
+  /** คนที่ร่วมหารงวดนี้ */
+  sharedBy?: string[]
 }
 
 export async function createInstallment(input: InstallmentInput): Promise<MutationResult> {
@@ -687,21 +807,39 @@ export async function createInstallment(input: InstallmentInput): Promise<Mutati
     return { success: false, error: 'จำนวนงวดต้องมากกว่า 0' }
   }
 
-  const { error } = await ctx.supabase.from('finance_installments').insert({
-    user_id: ctx.userId,
-    title: input.title.trim(),
-    monthly_amount: input.monthlyAmount,
-    owner_member_id: input.ownerMemberId || null,
-    card_id: input.cardId,
-    // เก็บเป็นวันที่ 1 ของเดือนเสมอ เพื่อให้คำนวณงวดได้ตรง
-    start_month: `${input.startMonth}-01`,
-    total_installments: input.totalInstallments,
-    icon: input.icon || null,
-  })
+  const { data: created, error } = await ctx.supabase
+    .from('finance_installments')
+    .insert({
+      user_id: ctx.userId,
+      title: input.title.trim(),
+      monthly_amount: input.monthlyAmount,
+      owner_member_id: input.ownerMemberId || null,
+      card_id: input.cardId,
+      // เก็บเป็นวันที่ 1 ของเดือนเสมอ เพื่อให้คำนวณงวดได้ตรง
+      start_month: `${input.startMonth}-01`,
+      total_installments: input.totalInstallments,
+      icon: input.icon || null,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    console.error('[Finance] createInstallment error:', error.message)
+  if (error || !created) {
+    console.error('[Finance] createInstallment error:', error?.message)
     return { success: false, error: 'เพิ่มรายการผ่อนไม่สำเร็จ' }
+  }
+
+  const shared = [...new Set((input.sharedBy ?? []).filter(Boolean))]
+  if (shared.length > 0) {
+    const { error: shareError } = await ctx.supabase
+      .from('installment_shares')
+      .insert(
+        shared.map(memberId => ({ installment_id: created.id, member_id: memberId }))
+      )
+
+    if (shareError) {
+      console.error('[Finance] createInstallment shares error:', shareError.message)
+      return { success: true, error: 'บันทึกรายการแล้ว แต่ตั้งผู้ร่วมหารไม่สำเร็จ' }
+    }
   }
   return { success: true }
 }
@@ -835,6 +973,8 @@ export interface RecurringInput {
   icon?: string | null
   /** YYYY-MM — เริ่มคิดตั้งแต่เดือนนี้ (ไม่ใส่ = ทุกเดือนย้อนหลังได้หมด) */
   startMonth?: string | null
+  /** คนที่ร่วมหารรายการนี้ */
+  sharedBy?: string[]
 }
 
 export async function createRecurring(input: RecurringInput): Promise<MutationResult> {
@@ -849,19 +989,35 @@ export async function createRecurring(input: RecurringInput): Promise<MutationRe
     return { success: false, error: 'วันที่ต้องอยู่ระหว่าง 1-31 หรือเลือกสิ้นเดือน' }
   }
 
-  const { error } = await ctx.supabase.from('recurring_expenses').insert({
-    user_id: ctx.userId,
-    title: input.title.trim(),
-    amount: input.amount,
-    paid_by_member_id: input.paidByMemberId || null,
-    day_of_month: input.dayOfMonth,
-    icon: input.icon || null,
-    start_month: input.startMonth ? `${input.startMonth}-01` : null,
-  })
+  const { data: created, error } = await ctx.supabase
+    .from('recurring_expenses')
+    .insert({
+      user_id: ctx.userId,
+      title: input.title.trim(),
+      amount: input.amount,
+      paid_by_member_id: input.paidByMemberId || null,
+      day_of_month: input.dayOfMonth,
+      icon: input.icon || null,
+      start_month: input.startMonth ? `${input.startMonth}-01` : null,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    console.error('[Finance] createRecurring error:', error.message)
+  if (error || !created) {
+    console.error('[Finance] createRecurring error:', error?.message)
     return { success: false, error: 'เพิ่มค่าใช้จ่ายประจำไม่สำเร็จ' }
+  }
+
+  const shared = [...new Set((input.sharedBy ?? []).filter(Boolean))]
+  if (shared.length > 0) {
+    const { error: shareError } = await ctx.supabase
+      .from('recurring_shares')
+      .insert(shared.map(memberId => ({ recurring_id: created.id, member_id: memberId })))
+
+    if (shareError) {
+      console.error('[Finance] createRecurring shares error:', shareError.message)
+      return { success: true, error: 'บันทึกรายการแล้ว แต่ตั้งผู้ร่วมหารไม่สำเร็จ' }
+    }
   }
   return { success: true }
 }

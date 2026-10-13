@@ -90,6 +90,15 @@ export async function setShares(
   return db.setShares(kind, itemId, memberIds)
 }
 
+/** ตั้งผู้ร่วมหารให้หลายรายการพร้อมกัน */
+export async function setSharesBulk(
+  kind: db.ShareKind,
+  itemIds: string[],
+  memberIds: string[]
+) {
+  return db.setSharesBulk(kind, itemIds, memberIds)
+}
+
 /** แปลงรายการใช้จ่ายที่มีอยู่ ให้กลายเป็นรายการผ่อน */
 export async function convertExpenseToInstallment(
   expenseId: string,

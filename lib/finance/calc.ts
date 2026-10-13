@@ -74,6 +74,21 @@ export function currentMonth(nowMs: number = Date.now()): string {
   return bangkokDate.slice(0, 7)
 }
 
+/** วันนี้ตามเวลาไทย รูปแบบ YYYY-MM-DD (ค.ศ.) */
+export function currentDate(nowMs: number = Date.now()): string {
+  return new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+}
+
+/**
+ * วันที่ตั้งต้นของฟอร์มเมื่อกำลังดูเดือนหนึ่ง
+ *
+ * ดูเดือนปัจจุบัน = วันนี้ (เคสที่เจอบ่อยสุด ไม่ต้องมานั่งแก้ทุกครั้ง)
+ * ดูเดือนอื่น = วันที่ 1 ของเดือนนั้น เพราะเดาไม่ได้ว่าตั้งใจวันไหน
+ */
+export function defaultDateFor(month: string, nowMs: number = Date.now()): string {
+  return month === currentMonth(nowMs) ? currentDate(nowMs) : `${month}-01`
+}
+
 /** แปลง YYYY-MM เป็นตัวเลขปีและเดือน (เดือนเริ่มที่ 1) */
 function parseMonth(month: string): { year: number; month: number } {
   const [y, m] = month.split('-').map(Number)
@@ -279,6 +294,182 @@ export function summarizeMembers(data: FinanceMonth): MemberSummary[] {
       byGroup,
     }
   })
+}
+
+/** บัตรที่คนหนึ่งเป็นเจ้าของ */
+export function cardsOfOwner(data: FinanceMonth, memberId: string) {
+  return data.cards.filter(c => c.ownerId === memberId)
+}
+
+/**
+ * ยอดรวมทุกบัตรของเจ้าของคนหนึ่ง แยกว่าเป็นของใครเท่าไร
+ *
+ * เจ้าของบัตรกับคนที่รับผิดชอบยอดเป็นคนละคนกันได้ — ดุ๊กถือบัตรแต่แอมรูดไป 100
+ * ยอดนั้นต้องโผล่ใต้บัตรของดุ๊กโดยระบุว่าเป็นของแอม
+ */
+export function ownerCardTotalByMember(
+  data: FinanceMonth,
+  memberId: string
+): Record<string, number> {
+  const result: Record<string, number> = {}
+  for (const m of data.members) result[m.id] = 0
+
+  for (const card of cardsOfOwner(data, memberId)) {
+    const perCard = cardTotalByMember(data, card.id)
+    for (const [id, amount] of Object.entries(perCard)) {
+      result[id] = (result[id] || 0) + amount
+    }
+  }
+  return result
+}
+
+/** ยอดรวมทุกบัตรของเจ้าของคนหนึ่ง */
+export function ownerCardTotal(data: FinanceMonth, memberId: string): number {
+  return cardsOfOwner(data, memberId).reduce(
+    (sum, card) => sum + cardTotal(data, card.id),
+    0
+  )
+}
+
+/**
+ * ยอดเงินสดกับรายจ่ายประจำรวมกัน แยกตามคน
+ *
+ * สองกลุ่มนี้แสดงคู่กันในกล่องภาพรวมเพราะเป็นรายจ่ายที่ไม่ผูกกับบัตรใคร
+ */
+export function sharedTotalByMember(data: FinanceMonth): Record<string, number> {
+  const cash = groupTotalByMember(data, 'cash')
+  const recurring = groupTotalByMember(data, 'recurring')
+
+  const result: Record<string, number> = {}
+  for (const source of [cash, recurring]) {
+    for (const [id, amount] of Object.entries(source)) {
+      result[id] = (result[id] || 0) + amount
+    }
+  }
+  return result
+}
+
+/** ยอดเงินสด + ประจำ รวมทุกคน */
+export function sharedTotal(data: FinanceMonth): number {
+  return groupTotal(data, 'cash') + groupTotal(data, 'recurring')
+}
+
+/**
+ * ยอดที่ยังไม่ได้ระบุว่าใครรับผิดชอบ รวมทุกช่องทาง
+ *
+ * ใช้เตือนท้ายกล่องภาพรวมว่าตัวเลขยังไม่ครบ
+ */
+export function unassignedTotal(data: FinanceMonth): { amount: number; count: number } {
+  let amount = 0
+  let count = 0
+
+  for (const e of data.expenses) {
+    if (e.sharedBy.length === 0) {
+      amount += e.amount
+      count += 1
+    }
+  }
+  for (const i of data.installments) {
+    if (i.sharedBy.length === 0) {
+      amount += i.monthlyAmount
+      count += 1
+    }
+  }
+  return { amount, count }
+}
+
+/** รายการหนึ่งบรรทัดที่ทำให้เกิดหนี้ระหว่างกัน */
+export interface DebtDetail {
+  /** ชื่อรายการ */
+  title: string
+  /** ยอดเฉพาะส่วนที่ลูกหนี้ต้องรับผิดชอบ ไม่ใช่ยอดเต็มของรายการ */
+  amount: number
+  /** ยอดเต็มของรายการ */
+  fullAmount: number
+  cardName: string
+  date?: string | null
+  icon?: string | null
+}
+
+/** หนี้ที่คนหนึ่งติดอีกคนจากการรูดบัตรของเขา */
+export interface DebtEntry {
+  /** คนที่ต้องจ่ายคืน (ไปใช้ยอดในบัตรคนอื่น) */
+  debtorId: string
+  /** เจ้าของบัตรที่ออกเงินไปก่อน */
+  creditorId: string
+  amount: number
+  items: DebtDetail[]
+}
+
+/**
+ * หนี้จากการใช้บัตรของคนอื่น
+ *
+ * เจ้าของบัตรเป็นคนจ่ายเงินออกไปทั้งใบ ดังนั้นส่วนที่คนอื่นร่วมหารในบัตรนั้น
+ * คือเงินที่เจ้าของออกให้ไปก่อน — ต้องจ่ายคืน
+ *
+ * รายการที่เจ้าของบัตรหารเองไม่นับ เพราะจ่ายเงินตัวเองไม่เกิดหนี้
+ */
+export function cardDebts(data: FinanceMonth): DebtEntry[] {
+  // key = "ลูกหนี้→เจ้าหนี้"
+  const map = new Map<string, DebtEntry>()
+
+  const add = (
+    debtorId: string,
+    creditorId: string,
+    amount: number,
+    detail: DebtDetail
+  ) => {
+    if (debtorId === creditorId || amount <= 0) return
+    const key = `${debtorId}→${creditorId}`
+    const found = map.get(key)
+    if (found) {
+      found.amount += amount
+      found.items.push(detail)
+    } else {
+      map.set(key, { debtorId, creditorId, amount, items: [detail] })
+    }
+  }
+
+  for (const card of data.cards) {
+    if (!card.ownerId) continue
+    const cardName = `${card.name}${card.last4 ? ` ••••${card.last4}` : ''}`
+
+    for (const e of cardExpenses(data, card.id)) {
+      if (e.sharedBy.length === 0) continue
+      const parts = splitAmount(e.amount, e.sharedBy)
+      e.sharedBy.forEach((memberId, index) => {
+        add(memberId, card.ownerId!, parts[index], {
+          title: e.title,
+          amount: parts[index],
+          fullAmount: e.amount,
+          cardName,
+          date: e.date,
+          icon: e.icon,
+        })
+      })
+    }
+
+    for (const i of cardInstallments(data, card.id)) {
+      if (i.sharedBy.length === 0) continue
+      const parts = splitAmount(i.monthlyAmount, i.sharedBy)
+      i.sharedBy.forEach((memberId, index) => {
+        add(memberId, card.ownerId!, parts[index], {
+          title: `${i.title} (ผ่อน)`,
+          amount: parts[index],
+          fullAmount: i.monthlyAmount,
+          cardName,
+          icon: i.icon,
+        })
+      })
+    }
+  }
+
+  return [...map.values()]
+    .map(entry => ({
+      ...entry,
+      items: [...entry.items].sort((a, b) => b.amount - a.amount),
+    }))
+    .sort((a, b) => b.amount - a.amount)
 }
 
 /** รายจ่ายทั้งหมดรวมทุกคนทุกช่องทาง */

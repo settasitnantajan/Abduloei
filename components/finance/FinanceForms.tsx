@@ -7,10 +7,13 @@ import { toast } from 'sonner';
 import FinanceModal, {
   DayOfMonthSelect,
   MemberSelect,
+  SharedBySelect,
   dateInputClass,
   inputClass,
   labelClass,
 } from './FinanceModal';
+import { IconPicker } from './CategoryIcon';
+import { formatMonthLabel } from '@/lib/finance/calc';
 import {
   createCard,
   updateCard,
@@ -22,6 +25,7 @@ import {
   updateRecurring,
   updateMemberIncome,
   convertExpenseToInstallment,
+  setShares,
 } from '@/app/actions/finance';
 import type {
   CreditCard as CreditCardType,
@@ -126,7 +130,7 @@ export function IncomeModal({
       </div>
 
       <p className="text-xs text-gray-500">
-        ตั้งเฉพาะรอบนี้ — รอบถัดไปจะใช้ค่านี้ต่อจนกว่าจะแก้ใหม่
+        ตั้งเฉพาะ{formatMonthLabel(period)} — เดือนถัดไปจะใช้ค่านี้ต่อจนกว่าจะแก้ใหม่
       </p>
     </FinanceModal>
   );
@@ -139,11 +143,14 @@ export function IncomeModal({
 export function CardModal({
   members,
   card,
+  defaultOwnerId,
   onClose,
 }: {
   members: FinanceMember[];
   /** มีค่า = โหมดแก้ไข */
   card?: CreditCardType;
+  /** เจ้าของตั้งต้นตอนเพิ่มบัตรใหม่ — มาจากปุ่ม "เพิ่มบัตรให้<ชื่อ>" */
+  defaultOwnerId?: string;
   onClose: () => void;
 }) {
   const { error, isPending, run } = useSubmit(onClose);
@@ -219,7 +226,7 @@ export function CardModal({
         </div>
         <MemberSelect
           members={members}
-          defaultValue={card?.ownerId}
+          defaultValue={card?.ownerId ?? defaultOwnerId}
           label="เจ้าของบัตร"
         />
       </div>
@@ -262,6 +269,7 @@ export function ExpenseModal({
   channel,
   cardId,
   cardLabel,
+  cardOwnerId,
   expense,
   defaultDate,
   onClose,
@@ -271,22 +279,28 @@ export function ExpenseModal({
   /** บัตรที่ผูก (เฉพาะ channel = credit_card) */
   cardId?: string;
   cardLabel?: string;
+  /** เจ้าของบัตร — ใช้เป็นคนจ่ายโดยไม่ต้องถาม */
+  cardOwnerId?: string | null;
   /** มีค่า = โหมดแก้ไข */
   expense?: ExpenseItem;
-  /** วันที่ตั้งต้น — วันที่ 1 ของเดือนที่กำลังดู */
+  /** วันที่ตั้งต้น — วันนี้เมื่อดูเดือนปัจจุบัน */
   defaultDate: string;
   onClose: () => void;
 }) {
   const { error, isPending, run } = useSubmit(onClose);
   const editing = !!expense;
 
+  const isCard = channel === 'credit_card';
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
+    const sharedBy = data.getAll('sharedBy').map(String).filter(Boolean);
     const common = {
       title: str(data, 'title'),
       amount: num(data, 'amount'),
-      paidByMemberId: orNull(str(data, 'memberId')),
+      // รายการในบัตร = เจ้าของบัตรออกเงินไปก่อนเสมอ ไม่ต้องให้กรอก
+      paidByMemberId: isCard ? cardOwnerId ?? null : orNull(str(data, 'memberId')),
       spentOn: str(data, 'spentOn'),
       icon: orNull(str(data, 'icon')),
     };
@@ -300,18 +314,19 @@ export function ExpenseModal({
             paid_by_member_id: common.paidByMemberId,
             spent_on: common.spentOn,
             icon: common.icon,
+          }).then(async result => {
+            if (!result.success) return result;
+            return setShares('expense', expense.id, sharedBy);
           }),
         'แก้ไขรายการแล้ว'
       );
     } else {
       run(
-        () => createExpense({ ...common, channel, cardId: cardId ?? null }),
+        () => createExpense({ ...common, channel, cardId: cardId ?? null, sharedBy }),
         'เพิ่มรายการแล้ว'
       );
     }
   };
-
-  const isCard = channel === 'credit_card';
 
   return (
     <FinanceModal
@@ -347,7 +362,7 @@ export function ExpenseModal({
           <input
             name="amount"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
             inputMode="decimal"
             defaultValue={expense?.amount ?? ''}
@@ -356,20 +371,6 @@ export function ExpenseModal({
             required
           />
         </div>
-        <div className="space-y-1.5">
-          <label className={labelClass}>ไอคอน</label>
-          <input
-            name="icon"
-            type="text"
-            maxLength={4}
-            defaultValue={expense?.icon ?? ''}
-            placeholder="⛽"
-            className={inputClass}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className={labelClass}>
             วันที่ <span className="text-red-400">*</span>
@@ -382,8 +383,17 @@ export function ExpenseModal({
             required
           />
         </div>
-        <MemberSelect members={members} defaultValue={expense?.paidById} label="ใครจ่าย" />
       </div>
+
+      {/* ถามตั้งแต่ตอนสร้าง ไม่งั้นต้องมาไล่กดระบุทีหลังทีละรายการ */}
+      <SharedBySelect members={members} defaultValue={expense?.sharedBy} />
+
+      {/* บัตรมีเจ้าของอยู่แล้ว ไม่ต้องถามซ้ำว่าใครรูด */}
+      {!isCard && (
+        <MemberSelect members={members} defaultValue={expense?.paidById} label="ใครจ่าย" />
+      )}
+
+      <IconPicker defaultValue={expense?.icon} />
     </FinanceModal>
   );
 }
@@ -420,6 +430,7 @@ export function InstallmentModal({
     const data = new FormData(e.currentTarget);
     const startMonth = str(data, 'startMonth');
     const total = oneTime ? null : num(data, 'totalInstallments');
+    const sharedBy = data.getAll('sharedBy').map(String).filter(Boolean);
 
     if (editing) {
       run(
@@ -431,6 +442,9 @@ export function InstallmentModal({
             start_month: `${startMonth}-01`,
             total_installments: total,
             icon: orNull(str(data, 'icon')),
+          }).then(async result => {
+            if (!result.success) return result;
+            return setShares('installment', installment.id, sharedBy);
           }),
         'แก้ไขรายการผ่อนแล้ว'
       );
@@ -445,6 +459,7 @@ export function InstallmentModal({
             startMonth,
             totalInstallments: total,
             icon: orNull(str(data, 'icon')),
+            sharedBy,
           }),
         'เพิ่มรายการผ่อนแล้ว'
       );
@@ -485,7 +500,7 @@ export function InstallmentModal({
           <input
             name="monthlyAmount"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
             inputMode="decimal"
             defaultValue={installment?.monthlyAmount ?? ''}
@@ -494,20 +509,6 @@ export function InstallmentModal({
             required
           />
         </div>
-        <div className="space-y-1.5">
-          <label className={labelClass}>ไอคอน</label>
-          <input
-            name="icon"
-            type="text"
-            maxLength={4}
-            defaultValue={installment?.icon ?? ''}
-            placeholder="📱"
-            className={inputClass}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className={labelClass}>
             เริ่มผ่อนเดือน <span className="text-red-400">*</span>
@@ -520,17 +521,23 @@ export function InstallmentModal({
             required
           />
         </div>
-        <MemberSelect members={members} defaultValue={installment?.ownerId} label="ของใคร" />
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-300">
+      <SharedBySelect members={members} defaultValue={installment?.sharedBy} />
+
+      <MemberSelect members={members} defaultValue={installment?.ownerId} label="ของใคร" />
+
+      <IconPicker defaultValue={installment?.icon} />
+
+      {/* ไม่กำหนดงวด = เก็บทุกเดือนไปเรื่อยๆ (isInstallmentActiveIn คืน true เสมอ) */}
+      <label className="flex items-center gap-2 min-h-11 text-sm text-gray-300 cursor-pointer">
         <input
           type="checkbox"
           checked={oneTime}
           onChange={e => setOneTime(e.target.checked)}
-          className="w-4 h-4 accent-[#00B900]"
+          className="w-4 h-4 accent-[#00B900] cursor-pointer"
         />
-        จ่ายครั้งเดียว ไม่มีงวด
+        จ่ายทุกเดือน ไม่มีกำหนดจบ
       </label>
 
       {!oneTime && (
@@ -577,6 +584,7 @@ export function RecurringModal({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
+    const sharedBy = data.getAll('sharedBy').map(String).filter(Boolean);
     const payload = {
       title: str(data, 'title'),
       amount: num(data, 'amount'),
@@ -594,11 +602,14 @@ export function RecurringModal({
             paid_by_member_id: payload.paidByMemberId,
             day_of_month: payload.dayOfMonth,
             icon: payload.icon,
+          }).then(async result => {
+            if (!result.success) return result;
+            return setShares('recurring', expense.id, sharedBy);
           }),
         'แก้ไขค่าใช้จ่ายประจำแล้ว'
       );
     } else {
-      run(() => createRecurring(payload), 'เพิ่มค่าใช้จ่ายประจำแล้ว');
+      run(() => createRecurring({ ...payload, sharedBy }), 'เพิ่มค่าใช้จ่ายประจำแล้ว');
     }
   };
 
@@ -636,7 +647,7 @@ export function RecurringModal({
           <input
             name="amount"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
             inputMode="decimal"
             defaultValue={expense?.amount ?? ''}
@@ -645,23 +656,17 @@ export function RecurringModal({
             required
           />
         </div>
-        <div className="space-y-1.5">
-          <label className={labelClass}>ไอคอน</label>
-          <input
-            name="icon"
-            type="text"
-            maxLength={4}
-            defaultValue={expense?.icon ?? ''}
-            placeholder="🏠"
-            className={inputClass}
-          />
-        </div>
+        <DayOfMonthSelect
+          defaultValue={expense?.dayOfMonth ?? 1}
+          label="เก็บเงินทุกวันที่"
+        />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <DayOfMonthSelect defaultValue={expense?.dayOfMonth ?? 1} />
-        <MemberSelect members={members} defaultValue={expense?.paidById} label="ใครจ่าย" />
-      </div>
+      <SharedBySelect members={members} defaultValue={expense?.sharedBy} />
+
+      <MemberSelect members={members} defaultValue={expense?.paidById} label="ใครจ่าย" />
+
+      <IconPicker defaultValue={expense?.icon} />
 
       <p className="text-xs text-gray-500">
         รายการนี้จะโผล่ให้อัตโนมัติทุกเดือน ไม่ต้องกรอกซ้ำ

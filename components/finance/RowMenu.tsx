@@ -66,7 +66,7 @@ export default function RowMenu({
         aria-label={`ตัวเลือกของ ${itemLabel}`}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="p-1.5 -m-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-[#26262A] transition-colors"
+        className="flex items-center justify-center w-11 h-11 rounded-md border border-[#3A3A40] bg-[#1F1F22] text-gray-400 hover:text-[#00B900] hover:border-[#00B900]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00B900]/60 transition-colors cursor-pointer"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
@@ -84,7 +84,7 @@ export default function RowMenu({
               setOpen(false);
               onEdit();
             }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-200 hover:bg-[#26262A] transition-colors text-left"
+            className="w-full flex items-center gap-2.5 px-3.5 py-3 min-h-11 cursor-pointer text-sm text-gray-200 hover:bg-[#26262A] transition-colors text-left"
           >
             <Pencil className="w-3.5 h-3.5 shrink-0" />
             แก้ไข
@@ -98,7 +98,7 @@ export default function RowMenu({
                 setOpen(false);
                 extraAction.onClick();
               }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-200 hover:bg-[#26262A] transition-colors text-left border-t border-[#333338]"
+              className="w-full flex items-center gap-2.5 px-3.5 py-3 min-h-11 cursor-pointer text-sm text-gray-200 hover:bg-[#26262A] transition-colors text-left border-t border-[#333338]"
             >
               <Repeat className="w-3.5 h-3.5 shrink-0" />
               {extraAction.label}
@@ -112,7 +112,7 @@ export default function RowMenu({
               setOpen(false);
               onDelete();
             }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[#F0384E] hover:bg-[#F0384E]/10 transition-colors text-left border-t border-[#333338]"
+            className="w-full flex items-center gap-2.5 px-3.5 py-3 min-h-11 cursor-pointer text-sm text-[#F0384E] hover:bg-[#F0384E]/10 transition-colors text-left border-t border-[#333338]"
           >
             <Trash2 className="w-3.5 h-3.5 shrink-0" />
             {deleteLabel}

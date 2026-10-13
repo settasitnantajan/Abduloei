@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Loader2, Users } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { splitAmount } from '@/lib/finance/calc';
 import type { FinanceMember } from '@/lib/types/finance';
@@ -51,6 +51,8 @@ export default function MemberPicker({
   // ไม่ sync กับ props ด้วย effect เพื่อไม่ให้ค่าจาก server ที่มาทีหลัง
   // ทับสิ่งที่ผู้ใช้กำลังติ๊กค้างไว้
   const [draft, setDraft] = useState<string[] | null>(null);
+  // เมนูล้นจอด้านล่างไหม — วัดตอนกดเปิด ไม่ใช่ตอน render
+  const [flipUp, setFlipUp] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   /** รายชื่อที่ใช้แสดง — ยังไม่เปิดเมนูก็ใช้ค่าจาก server */
@@ -138,6 +140,13 @@ export default function MemberPicker({
           if (open) {
             close();
           } else {
+            const rect = wrapRef.current?.getBoundingClientRect();
+            if (rect) {
+              const needed = 90 + members.length * 44;
+              setFlipUp(
+                rect.bottom + needed > window.innerHeight && rect.top > needed
+              );
+            }
             setDraft(sharedBy);
             setOpen(true);
           }
@@ -146,28 +155,53 @@ export default function MemberPicker({
         aria-label={`เลือกผู้ร่วมหารของ ${itemLabel}`}
         aria-expanded={open}
         aria-haspopup="menu"
-        className={`flex items-center gap-1 text-[0.65rem] px-1.5 py-0.5 rounded transition-colors disabled:opacity-60 ${
+        className={`flex items-center gap-1 min-h-11 text-xs px-2 rounded-md border transition-colors disabled:opacity-60 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00B900]/60 ${
           unassigned
-            ? 'bg-[#F5A524]/15 text-[#F5A524] hover:bg-[#F5A524]/25'
-            : 'bg-[#26262A] text-gray-400 hover:bg-[#333338] hover:text-gray-200'
+            ? 'bg-[#F5A524]/15 border-[#F5A524]/40 border-dashed text-[#F5A524] hover:bg-[#F5A524]/25'
+            : 'bg-[#1F1F22] border-[#3A3A40] text-gray-300 hover:border-[#00B900]/50 hover:text-[#00B900]'
         }`}
       >
         {isPending ? (
-          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          <Loader2 className="w-3 h-3 animate-spin" />
         ) : names.length > 1 ? (
-          <Users className="w-2.5 h-2.5" />
+          <Users className="w-3 h-3" />
         ) : null}
         {label}
+        {/* ลูกศรบอกว่ากดแล้วมีเมนูให้เลือก ไม่ใช่ป้ายเฉยๆ */}
+        <ChevronDown className="w-3 h-3 opacity-70" />
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 z-30 w-44 max-w-[calc(100vw-2rem)] bg-[#1F1F22] border border-[#333338] rounded-xl shadow-xl overflow-hidden"
+          // แถวท้ายๆ เมนูจะล้นจอ จึงพลิกขึ้นด้านบนเมื่อที่ว่างข้างล่างไม่พอ
+          className={`absolute right-0 z-30 w-48 max-w-[calc(100vw-2rem)] bg-[#1F1F22] border border-[#333338] rounded-xl shadow-xl overflow-hidden ${
+            flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
         >
           <p className="px-3 pt-2 pb-1 text-[0.6rem] text-gray-500">
             ใครร่วมหารบ้าง (เลือกได้หลายคน)
           </p>
+
+          {/* ทางลัดของเคสที่เจอบ่อยสุด — หารกันทุกคน กดครั้งเดียวจบ */}
+          {members.length > 1 && (
+            <button
+              type="button"
+              onClick={e => {
+                stop(e);
+                commit(members.map(m => m.id));
+                setDraft(null);
+                setOpen(false);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left border-b border-[#333338] text-[#00B900] hover:bg-[#00B900]/10 transition-colors cursor-pointer"
+            >
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              หารกันทุกคน
+              <span className="ml-auto tabular-nums opacity-80">
+                คนละ ฿{money(amount / members.length)}
+              </span>
+            </button>
+          )}
 
           {members.map(m => {
             const index = current.indexOf(m.id);
@@ -182,7 +216,7 @@ export default function MemberPicker({
                   stop(e);
                   toggle(m.id);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-[#26262A] transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-2.5 min-h-11 text-xs hover:bg-[#26262A] transition-colors text-left cursor-pointer"
               >
                 <span
                   className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
